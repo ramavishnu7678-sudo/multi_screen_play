@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InnoSpace · Network Overview</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">▣</div>
+      <div class="brand-text">
+        <div class="name">InnoSpace</div>
+        <div class="sub">Global Network</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="/" class="active"><span class="icon">⌂</span> Home</a>
+      <a href="/devices"><span class="icon">▭</span> Devices</a>
+      <a href="/content"><span class="icon">▤</span> Content</a>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="topnav">
+      <div class="search-box">🔍 Search infrastructure…</div>
+      <div class="topnav-right">
+        <span style="font-size:18px;color:var(--text-faint)">?</span>
+        <span style="font-size:18px;color:var(--text-faint)">🔔</span>
+        <span style="font-size:18px;color:var(--text-faint)">⚙</span>
+        <div class="user-chip"><div class="avatar">A</div> Admin User</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <h1>Network Overview</h1>
+          <p id="overviewSub">Monitoring 0 active end-points</p>
+        </div>
+        <div class="head-actions">
+          <span class="pill green"><span class="dot"></span> <span id="onlinePill">0 Online</span></span>
+          <span class="pill"><span class="dot"></span> <span id="offlinePill">0 Offline</span></span>
+        </div>
+      </div>
+
+      <!-- DEVICES -->
+      <div class="section">
+        <div class="section-head">
+          <h2>▭ Devices</h2>
+          <a href="/devices">View all</a>
+        </div>
+        <div id="deviceGrid" class="device-grid">
+          <div class="empty-state" style="grid-column:1/-1">Loading devices…</div>
+        </div>
+      </div>
+
+      <!-- GROUPS -->
+      <div class="section">
+        <div class="section-head">
+          <h2>⊙ Groups</h2>
+          <a href="#" onclick="openGroupModal();return false;">Manage groups</a>
+        </div>
+        <div id="groupGrid" class="group-grid">
+          <div class="empty-state" style="grid-column:1/-1">Loading groups…</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary fab" onclick="openAddDeviceModal()">+ Add Device</button>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ADD DEVICE MODAL ===================== -->
+<div class="modal-overlay" id="addDeviceModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add Device</h3>
+      <button class="modal-close" onclick="closeModal('addDeviceModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label class="field-label">Device Name</label>
+        <input type="text" id="newDeviceName" placeholder="e.g. Reception Display">
+      </div>
+      <div>
+        <label class="field-label">Location (optional)</label>
+        <input type="text" id="newDeviceLocation" placeholder="e.g. Main Lobby, 2nd Floor">
+      </div>
+      <div>
+        <label class="field-label">IP Address (optional)</label>
+        <input type="text" id="newDeviceIp" placeholder="e.g. 192.168.1.104">
+      </div>
+      <p style="font-size:12px;color:var(--text-faint)">A unique device ID (UUID) is generated automatically. Open the resulting client link on the TV's browser to connect it.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addDeviceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddDevice()">Add Device</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DEVICE ADDED (show UUID + link) ===================== -->
+<div class="modal-overlay" id="deviceAddedModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>✅ Device Created</h3>
+      <button class="modal-close" onclick="closeModal('deviceAddedModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label class="field-label">Unique ID (UUID)</label>
+        <input type="text" id="createdUid" readonly class="mono">
+      </div>
+      <div>
+        <label class="field-label">Client Link — open this on the TV</label>
+        <input type="text" id="createdLink" readonly>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="copyCreatedLink()">Copy Link</button>
+      <button class="btn btn-primary" onclick="closeModal('deviceAddedModal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PLAY CONTENT MODAL ===================== -->
+<div class="modal-overlay" id="playModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Play Content</h3>
+      <button class="modal-close" onclick="closeModal('playModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div>
+        <label class="field-label">Select Playlist or Asset</label>
+        <select id="playVideoSelect"></select>
+      </div>
+
+      <div class="choice-row">
+        <div class="choice-box selected" id="loopChoice" onclick="toggleLoopChoice()">
+          <span class="cicon">🔁</span> Loop Content
+        </div>
+        <div class="choice-box" onclick="window.location='/content'">
+          <span class="cicon">➕</span> Add More
+        </div>
+      </div>
+
+      <div id="loopDurationWrap" style="display:none">
+        <label class="field-label">Loop Duration (seconds) <span style="color:var(--text-faint);font-weight:400">— 0 = infinite</span></label>
+        <input type="number" id="loopDurationInput" min="0" placeholder="e.g. 60 for 1 minute loop" value="0">
+      </div>
+
+      <div class="toggle-row">
+        <div class="trow-text">
+          <div class="ttitle">📅 Schedule Playback</div>
+          <div class="tsub" id="scheduleSub">Play instantly</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="scheduleToggle" onchange="onScheduleToggle()">
+          <span class="track"></span>
+        </label>
+      </div>
+
+      <div id="scheduleTimeWrap" style="display:none">
+        <label class="field-label">Start Date &amp; Time</label>
+        <input type="datetime-local" id="scheduleTimeInput">
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('playModal')">Cancel</button>
+      <button class="btn btn-warning" id="pauseBtn" onclick="submitPauseContent()" style="background:#d97706;color:white;display:none">⏸ Pause</button>
+      <button class="btn btn-danger" id="stopBtn" onclick="submitStopContent()" style="display:none">⏹ Stop</button>
+      <button class="btn btn-primary" id="pushBtn" onclick="submitPlayContent()">Push to Screens</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== GROUP MODAL ===================== -->
+<div class="modal-overlay" id="groupModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Manage Groups</h3>
+      <button class="modal-close" onclick="closeModal('groupModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label class="field-label">Create New Group</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="newGroupName" placeholder="e.g. All Lobby Screens">
+          <button class="btn btn-primary btn-sm" onclick="createGroup()" style="flex-shrink:0">Create</button>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Assign Devices to Group</label>
+        <select id="assignGroupSelect" onchange="renderAssignCheckboxes()"></select>
+      </div>
+      <div id="assignCheckboxes" class="checkbox-grid"></div>
+      <button class="btn btn-outline btn-block" onclick="saveGroupDevices()">Save Devices to Group</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal('groupModal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let allDevices = [];
+let allGroups = [];
+let activePlayTarget = { type: 'tv', id: null, label: '' };
+
+// ============== LOAD DATA ==============
+async function loadDevices() {
+  const res = await fetch('/api/tvs');
+  allDevices = await res.json();
+  renderDeviceGrid();
+  renderOverviewPills();
+}
+
+async function loadGroups() {
+  const res = await fetch('/api/groups');
+  allGroups = await res.json();
+  renderGroupGrid();
+}
+
+async function loadVideosIntoSelect(selectEl) {
+  const res = await fetch('/api/videos');
+  const videos = await res.json();
+  selectEl.innerHTML = videos.map(v => `<option value="${v.filename}">${v.original_name || v.filename}</option>`).join('')
+    || '<option value="">No content uploaded yet</option>';
+}
+
+function renderOverviewPills() {
+  const online = allDevices.filter(d => d.is_online).length;
+  const offline = allDevices.length - online;
+  document.getElementById('overviewSub').textContent = `Monitoring ${allDevices.length} active end-point${allDevices.length===1?'':'s'}`;
+  document.getElementById('onlinePill').textContent = `${online} Online`;
+  document.getElementById('offlinePill').textContent = `${offline} Offline`;
+}
+
+function deviceThumbIcon(d) {
+  return d.current_video ? '🎬' : '📺';
+}
+
+function renderDeviceGrid() {
+  const grid = document.getElementById('deviceGrid');
+  if (!allDevices.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="eicon">📺</div>No devices yet. Click "+ Add Device" to register your first screen.</div>`;
+    return;
+  }
+
+  grid.innerHTML = allDevices.map(d => `
+    <div class="device-card">
+      <div class="device-thumb ${d.is_online ? '' : 'offline'}">
+        ${deviceThumbIcon(d)}
+        <span class="status-badge ${d.is_online ? '' : 'offline'}"><span class="dot"></span> ${d.is_online ? 'ONLINE' : 'OFFLINE'}</span>
+        <div class="play-overlay">
+          <button onclick="event.stopPropagation(); openPlayModal('tv','${d.device_id}','${d.name.replace(/'/g,"")}')">▶ Play Content</button>
+        </div>
+      </div>
+      <div class="device-body">
+        <div class="dname">${d.name}</div>
+        <div class="dmeta">🕐 ${d.last_seen ? 'Last update: ' + timeAgo(d.last_seen) : 'Never connected'}</div>
+        <div class="duid">#${d.uid.slice(0,8)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderGroupGrid() {
+  const grid = document.getElementById('groupGrid');
+  if (!allGroups.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="eicon">⊙</div>No groups yet. Use "Manage groups" to create one.</div>`;
+    return;
+  }
+
+  grid.innerHTML = allGroups.map(g => {
+    const memberList = g.members.length
+      ? g.members.map(m => `<span class="member-chip ${m.is_online ? 'online' : 'offline'}">${m.name}</span>`).join('')
+      : '<span style="font-size:11px;color:var(--text-faint)">No devices assigned</span>';
+    return `
+    <div class="group-card">
+      <div class="group-card-top">
+        <div class="group-icon">⊞</div>
+        <div>
+          <div class="gname">${g.group_name}</div>
+          <div class="gmeta">${g.members.length} Device${g.members.length===1?'':'s'}</div>
+        </div>
+      </div>
+      <div class="group-members">${memberList}</div>
+      <div class="group-actions">
+        <button class="btn btn-primary btn-sm" onclick="openPlayModal('group','${g.group_name}','${g.group_name.replace(/'/g,"")}')">▶ Play on Group</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteGroup(${g.id},'${g.group_name.replace(/'/g,"")}')">🗑</button>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+function timeAgo(iso) {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+// ============== ADD DEVICE ==============
+function openAddDeviceModal() {
+  document.getElementById('newDeviceName').value = '';
+  document.getElementById('newDeviceLocation').value = '';
+  document.getElementById('newDeviceIp').value = '';
+  openModal('addDeviceModal');
+}
+
+async function submitAddDevice() {
+  const name = document.getElementById('newDeviceName').value.trim();
+  const deviceLocation = document.getElementById('newDeviceLocation').value.trim();
+  const ip_address = document.getElementById('newDeviceIp').value.trim();
+  if (!name) return alert('Enter a device name');
+
+  const res = await fetch('/api/tvs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, location: deviceLocation, ip_address })
+  });
+  const tv = await res.json();
+  closeModal('addDeviceModal');
+
+  document.getElementById('createdUid').value = tv.uid;
+  document.getElementById('createdLink').value = window.location.origin + '/client/' + tv.device_id;
+  openModal('deviceAddedModal');
+
+  loadDevices();
+}
+
+function copyCreatedLink() {
+  const input = document.getElementById('createdLink');
+  input.select();
+  document.execCommand('copy');
+}
+
+// ============== PLAY CONTENT MODAL ==============
+async function openPlayModal(type, id, label) {
+  activePlayTarget = { type, id, label };
+  document.querySelector('#playModal h3').textContent = `Play Content — ${label}`;
+  await loadVideosIntoSelect(document.getElementById('playVideoSelect'));
+  document.getElementById('scheduleToggle').checked = false;
+  document.getElementById('scheduleTimeWrap').style.display = 'none';
+  document.getElementById('scheduleSub').textContent = 'Play instantly';
+  document.getElementById('pushBtn').textContent = 'Push to Screens';
+  document.getElementById('pauseBtn').style.display = 'inline-flex';
+  document.getElementById('stopBtn').style.display = 'inline-flex';
+  document.getElementById('loopDurationInput').value = '0';
+  setLoopChoice(true);
+  openModal('playModal');
+}
+
+let loopEnabled = true;
+function setLoopChoice(v) {
+  loopEnabled = v;
+  document.getElementById('loopChoice').classList.toggle('selected', v);
+  document.getElementById('loopDurationWrap').style.display = v ? 'block' : 'none';
+}
+function toggleLoopChoice() { setLoopChoice(!loopEnabled); }
+
+function onScheduleToggle() {
+  const on = document.getElementById('scheduleToggle').checked;
+  document.getElementById('scheduleTimeWrap').style.display = on ? 'block' : 'none';
+  document.getElementById('scheduleSub').textContent = on ? 'Plays at a scheduled time' : 'Play instantly';
+  document.getElementById('pushBtn').textContent = on ? 'Schedule' : 'Push to Screens';
+}
+
+async function submitPlayContent() {
+  const video = document.getElementById('playVideoSelect').value;
+  if (!video) return alert('Select content first — upload a video from the Content page.');
+
+  const scheduled = document.getElementById('scheduleToggle').checked;
+  const scheduleTime = scheduled ? document.getElementById('scheduleTimeInput').value : null;
+  if (scheduled && !scheduleTime) return alert('Pick a date & time');
+
+  const loopDuration = parseInt(document.getElementById('loopDurationInput').value) || 0;
+
+  const body = {
+    targetType: activePlayTarget.type,
+    targetId: activePlayTarget.id,
+    video,
+    loop: loopEnabled,
+    loopDuration,
+    scheduleTime
+  };
+
+  const res = await fetch('/api/play-content', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await res.json();
+  alert(result.message);
+  closeModal('playModal');
+}
+
+async function submitPauseContent() {
+  const body = { targetType: activePlayTarget.type, targetId: activePlayTarget.id };
+  const res = await fetch('/api/pause-content', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await res.json();
+  alert(result.message);
+  closeModal('playModal');
+}
+
+async function submitStopContent() {
+  const body = { targetType: activePlayTarget.type, targetId: activePlayTarget.id };
+  const res = await fetch('/api/stop-content', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await res.json();
+  alert(result.message);
+  closeModal('playModal');
+}
+
+// ============== GROUPS MODAL ==============
+function openGroupModal() {
+  document.getElementById('newGroupName').value = '';
+  populateAssignGroupSelect();
+  openModal('groupModal');
+}
+
+function populateAssignGroupSelect() {
+  const sel = document.getElementById('assignGroupSelect');
+  sel.innerHTML = '<option value="">Select group…</option>' +
+    allGroups.map(g => `<option value="${g.group_name}">${g.group_name}</option>`).join('');
+  document.getElementById('assignCheckboxes').innerHTML = '';
+}
+
+async function createGroup() {
+  const groupName = document.getElementById('newGroupName').value.trim();
+  if (!groupName) return alert('Enter a group name');
+
+  const res = await fetch('/create-group', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupName })
+  });
+  const result = await res.json();
+  alert(result.message);
+  document.getElementById('newGroupName').value = '';
+  await loadGroups();
+  populateAssignGroupSelect();
+}
+
+function renderAssignCheckboxes() {
+  const groupName = document.getElementById('assignGroupSelect').value;
+  const wrap = document.getElementById('assignCheckboxes');
+  if (!groupName) { wrap.innerHTML = ''; return; }
+
+  const group = allGroups.find(g => g.group_name === groupName);
+  const memberIds = new Set((group ? group.members : []).map(m => m.device_id));
+
+  wrap.innerHTML = allDevices.map(d => `
+    <label class="checkbox-item">
+      <input type="checkbox" class="assignCheck" value="${d.device_id}" ${memberIds.has(d.device_id) ? 'checked' : ''}>
+      ${d.name}
+    </label>
+  `).join('') || '<span style="color:var(--text-faint);font-size:12px">No devices yet</span>';
+}
+
+async function saveGroupDevices() {
+  const groupName = document.getElementById('assignGroupSelect').value;
+  if (!groupName) return alert('Select a group first');
+
+  const selected = Array.from(document.querySelectorAll('.assignCheck:checked')).map(cb => cb.value);
+
+  const res = await fetch('/save-group-tvs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupName, tvs: selected })
+  });
+  const result = await res.json();
+  alert(result.message);
+  loadGroups();
+}
+
+async function deleteGroup(id, name) {
+  if (!confirm(`Delete group "${name}"?`)) return;
+  const res = await fetch(`/api/groups/${id}`, { method: 'DELETE' });
+  const result = await res.json();
+  alert(result.message);
+  loadGroups();
+}
+
+// ============== MODAL HELPERS ==============
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ============== LIVE UPDATES ==============
+socket.on('tv-list-full', (tvs) => {
+  allDevices = tvs;
+  renderDeviceGrid();
+  renderOverviewPills();
+});
+
+// ============== INIT ==============
+loadDevices();
+loadGroups();
+</script>
+
+</body>
+</html>

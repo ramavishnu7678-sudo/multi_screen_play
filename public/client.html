@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TV Client</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+
+  #video { width: 100vw; height: 100vh; object-fit: contain; display: none; background: #000; }
+  #image { width: 100vw; height: 100vh; object-fit: contain; display: none; background: #000; }
+
+  #idle { display: flex; flex-direction: column; align-items: center; gap: 14px; position: absolute; }
+  #idle h1 { font-size: 26px; }
+  #idle p { color: #64748b; font-size: 15px; }
+
+  #status { position: fixed; top: 12px; right: 16px; font-size: 12px; color: #475569; z-index: 10; }
+  #status.connected { color: #22c55e; }
+
+  /* Bottom bar */
+  #bottomBar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,.82); padding: 10px 20px;
+    display: none; align-items: center; justify-content: space-between;
+    gap: 14px; z-index: 20;
+  }
+  #nowplaying { font-size: 13px; color: #94a3b8; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #pbStatus { color: #38bdf8; font-weight: 700; text-transform: uppercase; font-size: 12px; }
+  #loopTimer { color: #fbbf24; font-size: 12px; font-weight: 600; }
+
+  /* TV Controls */
+  .tv-controls { display: flex; gap: 10px; align-items: center; }
+  .tv-btn {
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.2);
+    color: white; border-radius: 8px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .tv-btn:hover { background: rgba(255,255,255,.25); }
+  .tv-btn.play  { background: rgba(37,99,235,.7); border-color: #3b82f6; }
+  .tv-btn.pause { background: rgba(217,119,6,.7); border-color: #f59e0b; }
+  .tv-btn.stop  { background: rgba(220,38,38,.7); border-color: #ef4444; }
+</style>
+</head>
+<body>
+
+<div id="status">Connecting...</div>
+
+<div id="idle">
+  <div style="font-size:60px">&#x1F4FA;</div>
+  <h1 id="tvNameLabel">Loading...</h1>
+  <p>Waiting for content from admin...</p>
+</div>
+
+<video id="video" autoplay></video>
+<img   id="image" alt="Signage content">
+
+<div id="bottomBar">
+  <div>
+    <div id="nowplaying">&#x25B6; —</div>
+    <div style="display:flex;gap:10px;margin-top:3px">
+      <span id="pbStatus">STOPPED</span>
+      <span id="loopTimer"></span>
+    </div>
+  </div>
+  <div class="tv-controls">
+    <button class="tv-btn play"  id="btnPlay"  onclick="tvPlay()">&#x25B6; Play</button>
+    <button class="tv-btn pause" id="btnPause" onclick="tvPause()">&#x23F8; Pause</button>
+    <button class="tv-btn stop"  id="btnStop"  onclick="tvStop()">&#x23F9; Stop</button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const DEVICE_ID = decodeURIComponent(location.pathname.split('/client/')[1] || 'UnknownTV');
+
+const videoEl   = document.getElementById('video');
+const imageEl   = document.getElementById('image');
+const idle      = document.getElementById('idle');
+const statusEl  = document.getElementById('status');
+const bottomBar = document.getElementById('bottomBar');
+const npTitle   = document.getElementById('nowplaying');
+const pbStatus  = document.getElementById('pbStatus');
+const loopTimer = document.getElementById('loopTimer');
+const tvNameLabel = document.getElementById('tvNameLabel');
+
+tvNameLabel.textContent = DEVICE_ID;
+
+// Current state
+let currentFilename = null;
+let currentLoop     = true;
+let currentLoopDuration = 0;  // seconds, 0 = infinite
+let currentMediaType = 'video';
+let loopCountdownTimer = null;
+let loopSecondsLeft = 0;
+
+let ws;
+function connect() {
+  ws = io();
+
+  ws.on('connect', () => {
+    statusEl.textContent = '&#x1F7E2; Connected';
+    statusEl.className = 'connected';
+    ws.emit('register-device', DEVICE_ID);
+    loadCurrentState();
+  });
+
+  ws.on('disconnect', () => {
+    statusEl.textContent = '&#x1F534; Disconnected';
+    statusEl.className = '';
+  });
+
+  ws.on('action', (data) => {
+    console.log('Received:', data);
+    if (data.type === 'play' && data.video) {
+      loadMedia(data.video, data.loop !== false, data.loopDuration || 0, data.mediaType || 'video');
+    } else if (data.type === 'play') {
+      resumeMedia();
+    } else if (data.type === 'pause') {
+      pauseMedia();
+    } else if (data.type === 'stop') {
+      stopMedia();
+    }
+  });
+}
+
+function getMediaUrl(filename, mediaType) {
+  return mediaType === 'image' ? '/images/' + filename : '/videos/' + filename;
+}
+
+function loadMedia(filename, loop, loopDuration, mediaType) {
+  currentFilename    = filename;
+  currentLoop        = loop;
+  currentLoopDuration = loopDuration || 0;
+  currentMediaType   = mediaType || 'video';
+
+  stopLoopTimer();
+
+  if (currentMediaType === 'image') {
+    videoEl.style.display = 'none';
+    videoEl.pause();
+    videoEl.src = '';
+
+    imageEl.src = getMediaUrl(filename, 'image');
+    imageEl.style.display = 'block';
+    idle.style.display = 'none';
+    bottomBar.style.display = 'flex';
+    npTitle.textContent = '&#x1F5BC; ' + filename;
+    setStatus('PLAYING');
+
+    if (loop) {
+      if (loopDuration > 0) {
+        startLoopTimer(loopDuration);
+      } else {
+        // Images don't auto-advance; just show until stopped
+        loopTimer.textContent = '&#x1F501; Looping';
+      }
+    }
+  } else {
+    imageEl.style.display = 'none';
+    imageEl.src = '';
+
+    videoEl.src = getMediaUrl(filename, 'video');
+    videoEl.loop = loop && loopDuration === 0;
+    videoEl.style.display = 'block';
+    idle.style.display = 'none';
+    bottomBar.style.display = 'flex';
+    npTitle.textContent = '&#x25B6; ' + filename + (loop ? ' (looping)' : '');
+    videoEl.play().catch(console.error);
+    setStatus('PLAYING');
+
+    if (loop && loopDuration > 0) {
+      videoEl.loop = false;
+      startLoopTimer(loopDuration);
+    }
+  }
+}
+
+function resumeMedia() {
+  if (currentMediaType === 'video') {
+    videoEl.play().catch(console.error);
+  }
+  setStatus('PLAYING');
+}
+
+function pauseMedia() {
+  if (currentMediaType === 'video') videoEl.pause();
+  stopLoopTimer();
+  setStatus('PAUSED');
+}
+
+function stopMedia() {
+  videoEl.pause();
+  videoEl.src = '';
+  videoEl.style.display = 'none';
+  imageEl.src = '';
+  imageEl.style.display = 'none';
+  idle.style.display = 'flex';
+  bottomBar.style.display = 'none';
+  stopLoopTimer();
+  currentFilename = null;
+  setStatus('STOPPED');
+}
+
+function setStatus(text) { pbStatus.textContent = text; }
+
+// Loop duration countdown
+function startLoopTimer(seconds) {
+  loopSecondsLeft = seconds;
+  updateLoopDisplay();
+  loopCountdownTimer = setInterval(() => {
+    loopSecondsLeft--;
+    if (loopSecondsLeft <= 0) {
+      stopLoopTimer();
+      stopMedia();
+    } else {
+      updateLoopDisplay();
+    }
+  }, 1000);
+}
+
+function stopLoopTimer() {
+  if (loopCountdownTimer) { clearInterval(loopCountdownTimer); loopCountdownTimer = null; }
+  loopTimer.textContent = '';
+}
+
+function updateLoopDisplay() {
+  const m = Math.floor(loopSecondsLeft / 60);
+  const s = loopSecondsLeft % 60;
+  loopTimer.textContent = '&#x23F1; ' + (m > 0 ? m + 'm ' : '') + s + 's left';
+}
+
+// TV-side control buttons
+function tvPlay()  {
+  if (!currentFilename) return;
+  resumeMedia();
+  ws.emit('play-video', { tvId: DEVICE_ID, video: currentFilename, loop: currentLoop, loopDuration: currentLoopDuration });
+}
+function tvPause() {
+  pauseMedia();
+  ws.emit('pause-video', { tvId: DEVICE_ID });
+}
+function tvStop()  {
+  stopMedia();
+  ws.emit('stop-video', { tvId: DEVICE_ID });
+}
+
+// Load persisted state on reconnect
+async function loadCurrentState() {
+  try {
+    const res = await fetch('/api/tv-info/' + encodeURIComponent(DEVICE_ID));
+    const tv = await res.json();
+    if (tv.name) tvNameLabel.textContent = tv.name;
+    if (tv.current_video && tv.playback_status !== 'stopped') {
+      // Detect media type from filename extension
+      const imgExts = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i;
+      const mediaType = imgExts.test(tv.current_video) ? 'image' : 'video';
+      loadMedia(tv.current_video, !!tv.loop_enabled, tv.loop_duration || 0, mediaType);
+      if (tv.playback_status === 'paused') pauseMedia();
+    }
+  } catch (e) {
+    console.error('Failed to load current state', e);
+  }
+}
+
+// Auto-restart looping video when it ends (if loop but has duration timer)
+videoEl.addEventListener('ended', () => {
+  if (currentLoop && currentLoopDuration > 0 && loopSecondsLeft > 0) {
+    videoEl.currentTime = 0;
+    videoEl.play().catch(console.error);
+  }
+});
+
+connect();
+</script>
+
+</body>
+</html>

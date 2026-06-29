@@ -299,8 +299,7 @@ app.post("/schedule-video", (req, res) => {
 
 // Scheduler loop — checks every second
 setInterval(() => {
-  const now = new Date().toISOString().slice(0, 16);
-  const due = db.prepare("SELECT * FROM schedules WHERE fired = 0 AND scheduled_time <= ?").all(now);
+  const due = db.prepare("SELECT * FROM schedules WHERE fired = 0 AND scheduled_time <= replace(datetime('now', '+5 hours', '+30 minutes'), ' ', 'T')").all();
 
   due.forEach(job => {
     const video = db.prepare("SELECT * FROM videos WHERE id = ?").get(job.video_id);
@@ -456,5 +455,5 @@ function broadcastTvList() {
 // =====================================================================
 
 server.listen(3000, "0.0.0.0", () => {
-  console.log("InnoSpace Smart TV server running on http://0.0.0.0:3000");
+  console.log("InnoSpace Smart TV server running on http:// 192.168.1.129:3000");
 });

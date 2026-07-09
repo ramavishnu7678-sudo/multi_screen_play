@@ -3,10 +3,6 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 
-function generateUUID() {
-  return crypto.randomUUID();
-}
-
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -14,33 +10,54 @@ const db = new Database(path.join(DATA_DIR, "tv_system.db"));
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-// ================= SCHEMA =================
 db.exec(`
+  -- Registered TV screens
   CREATE TABLE IF NOT EXISTS tvs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid TEXT UNIQUE NOT NULL,             -- generated UUID, primary public identifier
-    device_id TEXT UNIQUE NOT NULL,       -- the deviceId used in /client/:deviceId
-    name TEXT,
+    uid TEXT UNIQUE NOT NULL,
+    device_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     location TEXT DEFAULT '',
     ip_address TEXT DEFAULT '',
     is_online INTEGER DEFAULT 0,
-    current_video TEXT DEFAULT NULL,
-    playback_status TEXT DEFAULT 'stopped',  -- playing | paused | stopped
-    loop_enabled INTEGER DEFAULT 1,
-    loop_duration INTEGER DEFAULT 0,   -- seconds; 0 = infinite
+    playback_status TEXT DEFAULT 'stopped',
+    current_playlist_id INTEGER,
+    current_item_index INTEGER DEFAULT 0,
+    loop_enabled INTEGER DEFAULT 0,
+    loop_until DATETIME DEFAULT NULL,
     last_seen DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  CREATE TABLE IF NOT EXISTS videos (
+  -- Content library (videos + images)
+  CREATE TABLE IF NOT EXISTS content (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     filename TEXT UNIQUE NOT NULL,
-    original_name TEXT,
+    original_name TEXT NOT NULL,
+    media_type TEXT DEFAULT 'video',
     size_bytes INTEGER DEFAULT 0,
-    media_type TEXT DEFAULT 'video',   -- 'video' | 'image'
+    duration_seconds INTEGER DEFAULT 0,
     uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Playlists
+  CREATE TABLE IF NOT EXISTS playlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    tv_id INTEGER REFERENCES tvs(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Items inside a playlist (ordered)
+  CREATE TABLE IF NOT EXISTS playlist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    content_id INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    display_duration INTEGER DEFAULT 10
+  );
+
+  -- TV Groups
   CREATE TABLE IF NOT EXISTS tv_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_name TEXT UNIQUE NOT NULL,
@@ -54,61 +71,31 @@ db.exec(`
     UNIQUE(group_id, tv_id)
   );
 
+  -- Schedules
   CREATE TABLE IF NOT EXISTS schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    target_type TEXT NOT NULL,            -- 'all' | 'tv' | 'group'
-    target_id INTEGER,                    -- tv.id or group.id, NULL if 'all'
-    video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL,
+    target_id INTEGER,
+    playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
     scheduled_time DATETIME NOT NULL,
-    loop_enabled INTEGER DEFAULT 1,
-    loop_duration INTEGER DEFAULT 0,   -- seconds; 0 = infinite
+    loop_enabled INTEGER DEFAULT 0,
+    loop_until DATETIME DEFAULT NULL,
     fired INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Play history
   CREATE TABLE IF NOT EXISTS play_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tv_id INTEGER REFERENCES tvs(id) ON DELETE CASCADE,
-    group_id INTEGER REFERENCES tv_groups(id) ON DELETE SET NULL,
-    video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
-    action TEXT NOT NULL,                  -- play | pause | stop
+    playlist_id INTEGER REFERENCES playlists(id) ON DELETE SET NULL,
+    content_id INTEGER REFERENCES content(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
     played_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
-// ================= MIGRATIONS =================
-// Safely add columns that may be missing from databases created before the current schema.
-
-const existingScheduleCols = db.pragma("table_info(schedules)").map(c => c.name);
-
-if (!existingScheduleCols.includes("loop_enabled")) {
-  db.exec("ALTER TABLE schedules ADD COLUMN loop_enabled INTEGER DEFAULT 1");
-  console.log("[migration] Added loop_enabled to schedules");
-}
-
-if (!existingScheduleCols.includes("loop_duration")) {
-  db.exec("ALTER TABLE schedules ADD COLUMN loop_duration INTEGER DEFAULT 0");
-  console.log("[migration] Added loop_duration to schedules");
-}
-
-const existingTvCols = db.pragma("table_info(tvs)").map(c => c.name);
-
-const existingVideoCols = db.pragma("table_info(videos)").map(c => c.name);
-
-if (!existingVideoCols.includes("media_type")) {
-  db.exec("ALTER TABLE videos ADD COLUMN media_type TEXT DEFAULT 'video'");
-  console.log("[migration] Added media_type to videos");
-}
-
-if (!existingTvCols.includes("loop_enabled")) {
-  db.exec("ALTER TABLE tvs ADD COLUMN loop_enabled INTEGER DEFAULT 1");
-  console.log("[migration] Added loop_enabled to tvs");
-}
-
-if (!existingTvCols.includes("loop_duration")) {
-  db.exec("ALTER TABLE tvs ADD COLUMN loop_duration INTEGER DEFAULT 0");
-  console.log("[migration] Added loop_duration to tvs");
-}
+function generateUUID() { return crypto.randomUUID(); }
 
 module.exports = db;
 module.exports.generateUUID = generateUUID;

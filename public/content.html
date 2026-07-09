@@ -7,217 +7,135 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-
 <div class="app">
-
   <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-icon">▣</div>
-      <div class="brand-text">
-        <div class="name">InnoSpace</div>
-        <div class="sub">Global Network</div>
-      </div>
-    </div>
+    <div class="brand"><div class="brand-icon">▣</div><div><div class="brand-name">InnoSpace</div><div class="brand-sub">Global Network</div></div></div>
     <nav class="nav">
-      <a href="/"><span class="icon">⌂</span> Home</a>
-      <a href="/devices"><span class="icon">▭</span> Devices</a>
-      <a href="/content" class="active"><span class="icon">▤</span> Content</a>
+      <a href="/"><span class="ni">⌂</span> Home</a>
+      <a href="/devices"><span class="ni">▭</span> Devices</a>
+      <a href="/content" class="active"><span class="ni">▤</span> Content</a>
     </nav>
   </aside>
-
   <div class="main">
-
     <div class="topnav">
-      <div class="search-box">🔍 Search content library…</div>
-      <div class="topnav-right">
-        <span style="font-size:18px;color:var(--text-faint)">🔔</span>
-        <span style="font-size:18px;color:var(--text-faint)">⚙</span>
+      <div class="search">🔍 Search content library…</div>
+      <div class="topnav-r">
+        <button class="icon-btn">🔔</button><button class="icon-btn">⚙</button>
         <div class="user-chip"><div class="avatar">A</div> Admin User</div>
       </div>
     </div>
-
     <div class="content">
-
       <div class="page-head">
-        <div>
-          <h1>Content Library</h1>
-          <p>Manage your digital signage assets and playlists.</p>
-        </div>
-        <div class="head-actions">
+        <div><h1>Content Library</h1><p>Manage digital signage assets — videos and images.</p></div>
+        <div class="head-r">
+          <span id="countBadge" class="pill">0 items</span>
           <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">⬆ Upload Content</button>
         </div>
       </div>
 
       <div class="tabs">
         <button class="active" id="tabAll" onclick="setTab('all')">All Media</button>
-        <button id="tabVideos" onclick="setTab('video')">Videos</button>
-        <button id="tabImages" onclick="setTab('image')">Images</button>
+        <button id="tabVideo" onclick="setTab('video')">Videos</button>
+        <button id="tabImage" onclick="setTab('image')">Images</button>
       </div>
 
-      <div id="mediaGrid" class="media-grid">
-        <div class="empty-state" style="grid-column:1/-1">Loading content…</div>
-      </div>
+      <div id="mediaGrid" class="media-grid"></div>
 
       <br>
-
-      <div class="upload-zone" onclick="document.getElementById('fileInput').click()" id="dropZone">
-        <div class="uicon">⬆</div>
-        Drag and drop assets here, or click to browse<br>
-        <span style="font-size:11.5px">Supports MP4, WebM, MOV, JPG, PNG, GIF, WebP. Stored locally on this server.</span>
+      <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="u-icon">⬆</div>
+        Drag &amp; drop files here, or click to browse<br>
+        <span style="font-size:11px">Videos: MP4, WebM, MOV &nbsp;|&nbsp; Images: JPG, PNG, GIF, WebP</span>
       </div>
-      <input type="file" id="fileInput" accept="video/*,image/*" style="display:none" onchange="handleFileSelect()">
-
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="uploadModal">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>Upload Content</h3>
-      <button class="modal-close" onclick="closeModal('uploadModal')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div>
-        <label class="field-label">File</label>
-        <div id="selectedFileName" style="font-size:13px;color:var(--text-dim)">—</div>
-      </div>
-      <div>
-        <label class="field-label">Display Name</label>
-        <input type="text" id="uploadTitle" placeholder="e.g. Corporate Summer Highlights 2024">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('uploadModal')">Cancel</button>
-      <button class="btn btn-primary" id="confirmUploadBtn" onclick="confirmUpload()">Upload</button>
+      <input type="file" id="fileInput" accept="video/*,image/*" multiple style="display:none" onchange="handleFiles(this.files)">
     </div>
   </div>
 </div>
 
 <script>
-let allVideos = [];
-let pendingFile = null;
+let allContent = [];
 let currentTab = 'all';
 
-function formatBytes(bytes) {
-  if (!bytes) return '—';
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1 ? mb.toFixed(1) + ' MB' : (bytes / 1024).toFixed(0) + ' KB';
+function fmtBytes(b) {
+  if (!b) return '—';
+  const mb = b / 1048576;
+  return mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
 }
-function formatDate(iso) {
+function fmtDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function setTab(tab) {
   currentTab = tab;
-  document.getElementById('tabAll').classList.toggle('active', tab === 'all');
-  document.getElementById('tabVideos').classList.toggle('active', tab === 'video');
-  document.getElementById('tabImages').classList.toggle('active', tab === 'image');
+  ['All','Video','Image'].forEach(t => {
+    const btn = document.getElementById('tab' + t);
+    if (btn) btn.classList.toggle('active', t.toLowerCase() === tab || (tab === 'all' && t === 'All'));
+  });
   renderGrid();
 }
 
 function renderGrid() {
+  const filtered = currentTab === 'all' ? allContent : allContent.filter(c => c.media_type === currentTab);
   const grid = document.getElementById('mediaGrid');
-  if (!allVideos.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="eicon">&#9638;</div>No content uploaded yet. Use "Upload Content" to add your first video or image.</div>';
-    return;
-  }
-
-  const filtered = currentTab === 'all' ? allVideos : allVideos.filter(v => (v.media_type || 'video') === currentTab);
+  document.getElementById('countBadge').textContent = `${allContent.length} item${allContent.length !== 1 ? 's' : ''}`;
 
   if (!filtered.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">No content in this category.</div>';
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="ei">${currentTab === 'image' ? '🖼' : '🎬'}</div><h3>No ${currentTab === 'all' ? 'content' : currentTab + 's'} uploaded yet</h3><p>Use "Upload Content" or drag files here.</p></div>`;
     return;
   }
 
-  grid.innerHTML = filtered.map(v => {
-    const isImage = (v.media_type || 'video') === 'image';
-    const src = isImage ? `/images/${v.filename}` : `/videos/${v.filename}`;
-    const thumb = isImage
-      ? `<img src="${src}" style="width:100%;height:110px;object-fit:cover">`
-      : `<div style="height:110px;background:linear-gradient(135deg,#334155,#0f172a);display:flex;align-items:center;justify-content:center;color:white;font-size:26px">&#x1F3AC;</div>`;
-    return `
+  grid.innerHTML = filtered.map(c => `
     <div class="media-card">
-      <div class="media-thumb" style="padding:0;overflow:hidden">${thumb}</div>
-      <div class="media-body">
-        <div class="media-name" title="${v.original_name || v.filename}">${v.original_name || v.filename}</div>
-        <div class="media-meta"><span>${formatBytes(v.size_bytes)}</span><span>${formatDate(v.uploaded_at)}</span></div>
-        <div class="media-actions">
-          <a href="${src}" target="_blank" style="flex:1"><button class="btn btn-outline btn-sm" style="width:100%">Preview</button></a>
-          <button class="btn btn-danger btn-sm" onclick="deleteVideo(${v.id},'${(v.original_name||v.filename).replace(/'/g,'')}')">&#x1F5D1;</button>
+      <div class="m-thumb">
+        ${c.media_type === 'image'
+          ? `<img src="/media/${c.filename}" alt="${c.original_name}" loading="lazy">`
+          : '🎬'}
+        <span class="m-type-badge">${c.media_type}</span>
+      </div>
+      <div class="m-body">
+        <div class="m-name" title="${c.original_name}">${c.original_name}</div>
+        <div class="m-meta"><span>${fmtBytes(c.size_bytes)}</span><span>${fmtDate(c.uploaded_at)}</span></div>
+        <div class="m-actions">
+          <a href="/media/${c.filename}" target="_blank" style="flex:1"><button class="btn btn-outline btn-xs" style="width:100%">Preview</button></a>
+          <button class="btn btn-danger btn-xs" onclick="deleteContent(${c.id},'${c.original_name.replace(/'/g,'')}')">🗑</button>
         </div>
       </div>
-    </div>
-  `}).join('');
+    </div>`).join('');
 }
 
-async function loadVideos() {
-  const res = await fetch('/api/videos');
-  allVideos = await res.json();
+async function loadContent() {
+  allContent = await fetch('/api/content').then(r => r.json());
   renderGrid();
 }
 
-function handleFileSelect() {
-  const file = document.getElementById('fileInput').files[0];
-  if (!file) return;
-  pendingFile = file;
-  document.getElementById('selectedFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
-  document.getElementById('uploadTitle').value = file.name.replace(/\.[^/.]+$/, '');
-  openModal('uploadModal');
-}
-
-async function confirmUpload() {
-  if (!pendingFile) return;
-  const title = document.getElementById('uploadTitle').value.trim() || pendingFile.name;
-
-  const formData = new FormData();
-  formData.append('video', pendingFile);
-
-  const btn = document.getElementById('confirmUploadBtn');
-  btn.textContent = 'Uploading…';
-  btn.disabled = true;
-
-  const res = await fetch('/upload-video', { method: 'POST', body: formData });
-  const result = await res.json();
-
-  btn.textContent = 'Upload';
-  btn.disabled = false;
-  closeModal('uploadModal');
+async function handleFiles(files) {
+  if (!files || !files.length) return;
+  const form = new FormData();
+  for (const f of files) form.append('files', f);
+  const btn = document.querySelector('.btn-primary');
+  btn.textContent = 'Uploading…'; btn.disabled = true;
+  const result = await fetch('/api/upload', { method: 'POST', body: form }).then(r => r.json());
+  btn.textContent = '⬆ Upload Content'; btn.disabled = false;
   document.getElementById('fileInput').value = '';
-  pendingFile = null;
-
   alert(result.message);
-  loadVideos();
+  loadContent();
 }
 
-async function deleteVideo(id, name) {
-  if (!confirm(`Delete "${name}"? This also removes related schedules.`)) return;
-  const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
-  const result = await res.json();
-  alert(result.message);
-  loadVideos();
+async function deleteContent(id, name) {
+  if (!confirm(`Delete "${name}"? This removes it from all playlists.`)) return;
+  const r = await fetch(`/api/content/${id}`, { method: 'DELETE' }).then(r => r.json());
+  alert(r.message);
+  loadContent();
 }
 
-const dropZone = document.getElementById('dropZone');
-['dragover','dragleave','drop'].forEach(evt => {
-  dropZone.addEventListener(evt, e => e.preventDefault());
-});
-dropZone.addEventListener('drop', e => {
-  const file = e.dataTransfer.files[0];
-  if (file) {
-    pendingFile = file;
-    document.getElementById('selectedFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
-    document.getElementById('uploadTitle').value = file.name.replace(/\.[^/.]+$/, '');
-    openModal('uploadModal');
-  }
-});
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor = 'var(--blue)'; });
+dz.addEventListener('dragleave', () => { dz.style.borderColor = ''; });
+dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor = ''; handleFiles(e.dataTransfer.files); });
 
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-loadVideos();
+loadContent();
 </script>
-
 </body>
 </html>

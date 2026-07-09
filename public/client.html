@@ -5,272 +5,222 @@
 <title>TV Client</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; color: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  body { background: #000; color: #fff; font-family: Arial, sans-serif; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 
-  #video { width: 100vw; height: 100vh; object-fit: contain; display: none; background: #000; }
-  #image { width: 100vw; height: 100vh; object-fit: contain; display: none; background: #000; }
+  #media-wrap { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
 
-  #idle { display: flex; flex-direction: column; align-items: center; gap: 14px; position: absolute; }
-  #idle h1 { font-size: 26px; }
-  #idle p { color: #64748b; font-size: 15px; }
+  #vid { width: 100%; height: 100%; object-fit: contain; display: none; }
+  #img { width: 100%; height: 100%; object-fit: contain; display: none; }
 
-  #status { position: fixed; top: 12px; right: 16px; font-size: 12px; color: #475569; z-index: 10; }
-  #status.connected { color: #22c55e; }
+  #idle { display: flex; flex-direction: column; align-items: center; gap: 16px; position: absolute; text-align: center; }
+  #idle .tv-icon { font-size: 72px; }
+  #idle h1 { font-size: 28px; font-weight: 700; }
+  #idle p { color: #475569; font-size: 15px; }
 
-  /* Bottom bar */
-  #bottomBar {
+  /* Bottom info bar */
+  #infobar {
     position: fixed; bottom: 0; left: 0; right: 0;
-    background: rgba(0,0,0,.82); padding: 10px 20px;
-    display: none; align-items: center; justify-content: space-between;
-    gap: 14px; z-index: 20;
+    background: linear-gradient(transparent, rgba(0,0,0,.85));
+    padding: 24px 20px 14px;
+    display: none; flex-direction: column; gap: 4px;
   }
-  #nowplaying { font-size: 13px; color: #94a3b8; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  #pbStatus { color: #38bdf8; font-weight: 700; text-transform: uppercase; font-size: 12px; }
-  #loopTimer { color: #fbbf24; font-size: 12px; font-weight: 600; }
+  #ib-title { font-size: 14px; font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ib-meta { font-size: 11px; color: #64748b; display: flex; gap: 14px; }
+  #ib-progress { height: 2px; background: #1e293b; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  #ib-bar { height: 100%; background: #3b82f6; border-radius: 2px; width: 0; transition: width linear; }
 
-  /* TV Controls */
-  .tv-controls { display: flex; gap: 10px; align-items: center; }
-  .tv-btn {
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.2);
-    color: white; border-radius: 8px;
-    padding: 7px 14px; font-size: 13px; font-weight: 600;
-    cursor: pointer; transition: background .15s;
-    display: flex; align-items: center; gap: 5px;
-  }
-  .tv-btn:hover { background: rgba(255,255,255,.25); }
-  .tv-btn.play  { background: rgba(37,99,235,.7); border-color: #3b82f6; }
-  .tv-btn.pause { background: rgba(217,119,6,.7); border-color: #f59e0b; }
-  .tv-btn.stop  { background: rgba(220,38,38,.7); border-color: #ef4444; }
+  /* Connection badge */
+  #conn { position: fixed; top: 12px; right: 14px; font-size: 11px; padding: 4px 10px; border-radius: 12px; background: rgba(0,0,0,.5); font-weight: 600; }
+  #conn.on { color: #22c55e; }
+  #conn.off { color: #ef4444; }
 </style>
 </head>
 <body>
 
-<div id="status">Connecting...</div>
-
-<div id="idle">
-  <div style="font-size:60px">&#x1F4FA;</div>
-  <h1 id="tvNameLabel">Loading...</h1>
-  <p>Waiting for content from admin...</p>
-</div>
-
-<video id="video" autoplay></video>
-<img   id="image" alt="Signage content">
-
-<div id="bottomBar">
-  <div>
-    <div id="nowplaying">&#x25B6; —</div>
-    <div style="display:flex;gap:10px;margin-top:3px">
-      <span id="pbStatus">STOPPED</span>
-      <span id="loopTimer"></span>
-    </div>
+<div id="media-wrap">
+  <div id="idle">
+    <div class="tv-icon">📺</div>
+    <h1 id="tvLabel">Connecting…</h1>
+    <p>Waiting for content from the admin panel</p>
   </div>
-  
+  <video id="vid" autoplay playsinline></video>
+  <img id="img" alt="">
 </div>
+
+<div id="infobar">
+  <div id="ib-title">—</div>
+  <div id="ib-meta">
+    <span id="ib-type">—</span>
+    <span id="ib-pos">Item 1 of 1</span>
+    <span id="ib-loop"></span>
+  </div>
+  <div id="ib-progress"><div id="ib-bar"></div></div>
+</div>
+
+<div id="conn" class="off">Connecting…</div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const DEVICE_ID = decodeURIComponent(location.pathname.split('/client/')[1] || 'UnknownTV');
+const DEVICE_ID = decodeURIComponent(location.pathname.split('/client/')[1] || 'TV');
 
-const videoEl   = document.getElementById('video');
-const imageEl   = document.getElementById('image');
-const idle      = document.getElementById('idle');
-const statusEl  = document.getElementById('status');
-const bottomBar = document.getElementById('bottomBar');
-const npTitle   = document.getElementById('nowplaying');
-const pbStatus  = document.getElementById('pbStatus');
-const loopTimer = document.getElementById('loopTimer');
-const tvNameLabel = document.getElementById('tvNameLabel');
+// DOM refs
+const vid = document.getElementById('vid');
+const img = document.getElementById('img');
+const idle = document.getElementById('idle');
+const infobar = document.getElementById('infobar');
+const ibTitle = document.getElementById('ib-title');
+const ibType = document.getElementById('ib-type');
+const ibPos = document.getElementById('ib-pos');
+const ibLoop = document.getElementById('ib-loop');
+const ibBar = document.getElementById('ib-bar');
+const conn = document.getElementById('conn');
+const tvLabel = document.getElementById('tvLabel');
 
-tvNameLabel.textContent = DEVICE_ID;
+tvLabel.textContent = DEVICE_ID;
 
-// Current state
-let currentFilename = null;
-let currentLoop     = true;
-let currentLoopDuration = 0;  // seconds, 0 = infinite
-let currentMediaType = 'video';
-let loopCountdownTimer = null;
-let loopSecondsLeft = 0;
+// ─── PLAYLIST STATE ───
+let playlist = null;
+let currentIdx = 0;
+let loopEnabled = false;
+let loopUntil = null;
+let itemTimer = null;
+let progressStart = null;
 
-let ws;
-function connect() {
-  ws = io();
-
-  ws.on('connect', () => {
-    statusEl.textContent = '&#x1F7E2; Connected';
-    statusEl.className = 'connected';
-    ws.emit('register-device', DEVICE_ID);
-    loadCurrentState();
-  });
-
-  ws.on('disconnect', () => {
-    statusEl.textContent = '&#x1F534; Disconnected';
-    statusEl.className = '';
-  });
-
-  ws.on('action', (data) => {
-    console.log('Received:', data);
-    if (data.type === 'play' && data.video) {
-      loadMedia(data.video, data.loop !== false, data.loopDuration || 0, data.mediaType || 'video');
-    } else if (data.type === 'play') {
-      resumeMedia();
-    } else if (data.type === 'pause') {
-      pauseMedia();
-    } else if (data.type === 'stop') {
-      stopMedia();
-    }
-  });
+// ─── SHOW IDLE ───
+function showIdle() {
+  vid.style.display = 'none';
+  img.style.display = 'none';
+  idle.style.display = 'flex';
+  infobar.style.display = 'none';
+  clearItemTimer();
 }
 
-function getMediaUrl(filename, mediaType) {
-  return mediaType === 'image' ? '/images/' + filename : '/videos/' + filename;
+// ─── PLAY PLAYLIST ───
+function startPlaylist(pl, loop, until) {
+  playlist = pl;
+  loopEnabled = loop;
+  loopUntil = until ? new Date(until) : null;
+  currentIdx = 0;
+  playCurrentItem();
 }
 
-function loadMedia(filename, loop, loopDuration, mediaType) {
-  currentFilename    = filename;
-  currentLoop        = loop;
-  currentLoopDuration = loopDuration || 0;
-  currentMediaType   = mediaType || 'video';
+function playCurrentItem() {
+  if (!playlist || !playlist.items || !playlist.items.length) return showIdle();
 
-  stopLoopTimer();
+  // Check loop_until — stop if expired
+  if (loopUntil && new Date() >= loopUntil) return stopAll();
 
-  if (currentMediaType === 'image') {
-    videoEl.style.display = 'none';
-    videoEl.pause();
-    videoEl.src = '';
+  const item = playlist.items[currentIdx];
+  if (!item) return showIdle();
 
-    imageEl.src = getMediaUrl(filename, 'image');
-    imageEl.style.display = 'block';
-    idle.style.display = 'none';
-    bottomBar.style.display = 'flex';
-    npTitle.textContent = '&#x1F5BC; ' + filename;
-    setStatus('PLAYING');
+  idle.style.display = 'none';
+  infobar.style.display = 'flex';
 
-    if (loop) {
-      if (loopDuration > 0) {
-        startLoopTimer(loopDuration);
-      } else {
-        // Images don't auto-advance; just show until stopped
-        loopTimer.textContent = '&#x1F501; Looping';
-      }
+  ibTitle.textContent = item.original_name;
+  ibType.textContent = item.media_type === 'image' ? '🖼 Image' : '🎬 Video';
+  ibPos.textContent = `Item ${currentIdx + 1} of ${playlist.items.length}`;
+  ibLoop.textContent = loopEnabled ? (loopUntil ? '🔁 Looping until ' + loopUntil.toLocaleString() : '🔁 Looping') : '';
+
+  if (item.media_type === 'image') {
+    vid.style.display = 'none';
+    vid.pause();
+    img.src = '/media/' + item.filename;
+    img.style.display = 'block';
+    // Images: hold for display_duration seconds then advance
+    startProgressBar(item.display_duration || 10);
+    itemTimer = setTimeout(() => advanceItem(), (item.display_duration || 10) * 1000);
+  } else {
+    img.style.display = 'none';
+    vid.loop = false;
+    vid.src = '/media/' + item.filename;
+    vid.style.display = 'block';
+    vid.play().catch(console.error);
+    // Videos: play to natural end (no timer), progress bar not used
+    ibBar.style.transition = 'none';
+    ibBar.style.width = '0';
+  }
+}
+
+function advanceItem() {
+  clearItemTimer();
+  currentIdx++;
+  if (currentIdx >= playlist.items.length) {
+    if (loopEnabled && (!loopUntil || new Date() < loopUntil)) {
+      currentIdx = 0;
+      playCurrentItem();
+    } else {
+      stopAll();
     }
   } else {
-    imageEl.style.display = 'none';
-    imageEl.src = '';
-
-    videoEl.src = getMediaUrl(filename, 'video');
-    videoEl.loop = loop && loopDuration === 0;
-    videoEl.style.display = 'block';
-    idle.style.display = 'none';
-    bottomBar.style.display = 'flex';
-    npTitle.textContent = '&#x25B6; ' + filename + (loop ? ' (looping)' : '');
-    videoEl.play().catch(console.error);
-    setStatus('PLAYING');
-
-    if (loop && loopDuration > 0) {
-      videoEl.loop = false;
-      startLoopTimer(loopDuration);
-    }
+    playCurrentItem();
   }
 }
 
-function resumeMedia() {
-  if (currentMediaType === 'video') {
-    videoEl.play().catch(console.error);
-  }
-  setStatus('PLAYING');
+function stopAll() {
+  clearItemTimer();
+  playlist = null;
+  vid.pause(); vid.src = '';
+  img.src = '';
+  showIdle();
 }
 
-function pauseMedia() {
-  if (currentMediaType === 'video') videoEl.pause();
-  stopLoopTimer();
-  setStatus('PAUSED');
+function clearItemTimer() {
+  if (itemTimer) { clearTimeout(itemTimer); itemTimer = null; }
 }
 
-function stopMedia() {
-  videoEl.pause();
-  videoEl.src = '';
-  videoEl.style.display = 'none';
-  imageEl.src = '';
-  imageEl.style.display = 'none';
-  idle.style.display = 'flex';
-  bottomBar.style.display = 'none';
-  stopLoopTimer();
-  currentFilename = null;
-  setStatus('STOPPED');
+function startProgressBar(durationSec) {
+  ibBar.style.transition = 'none';
+  ibBar.style.width = '0';
+  // force reflow then start transition
+  void ibBar.offsetWidth;
+  ibBar.style.transition = `width ${durationSec}s linear`;
+  ibBar.style.width = '100%';
 }
 
-function setStatus(text) { pbStatus.textContent = text; }
+// ─── VIDEO ENDED ───
+vid.addEventListener('ended', () => advanceItem());
 
-// Loop duration countdown
-function startLoopTimer(seconds) {
-  loopSecondsLeft = seconds;
-  updateLoopDisplay();
-  loopCountdownTimer = setInterval(() => {
-    loopSecondsLeft--;
-    if (loopSecondsLeft <= 0) {
-      stopLoopTimer();
-      stopMedia();
-    } else {
-      updateLoopDisplay();
+// ─── SOCKET ───
+const socket = io();
+
+socket.on('connect', () => {
+  conn.textContent = '🟢 Connected'; conn.className = 'on';
+  socket.emit('register-device', DEVICE_ID);
+  restoreState();
+});
+
+socket.on('disconnect', () => {
+  conn.textContent = '🔴 Disconnected'; conn.className = 'off';
+});
+
+socket.on('action', data => {
+  console.log('action:', data);
+  if (data.type === 'load_playlist') {
+    startPlaylist(data.playlist, data.loop, data.loopUntil);
+  } else if (data.type === 'resume') {
+    vid.play().catch(console.error);
+    if (ibTitle.textContent.endsWith(' (paused)')) {
+      ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '');
     }
-  }, 1000);
-}
-
-function stopLoopTimer() {
-  if (loopCountdownTimer) { clearInterval(loopCountdownTimer); loopCountdownTimer = null; }
-  loopTimer.textContent = '';
-}
-
-function updateLoopDisplay() {
-  const m = Math.floor(loopSecondsLeft / 60);
-  const s = loopSecondsLeft % 60;
-  loopTimer.textContent = '&#x23F1; ' + (m > 0 ? m + 'm ' : '') + s + 's left';
-}
-
-// TV-side control buttons
-function tvPlay()  {
-  if (!currentFilename) return;
-  resumeMedia();
-  ws.emit('play-video', { tvId: DEVICE_ID, video: currentFilename, loop: currentLoop, loopDuration: currentLoopDuration });
-}
-function tvPause() {
-  pauseMedia();
-  ws.emit('pause-video', { tvId: DEVICE_ID });
-}
-function tvStop()  {
-  stopMedia();
-  ws.emit('stop-video', { tvId: DEVICE_ID });
-}
-
-// Load persisted state on reconnect
-async function loadCurrentState() {
-  try {
-    const res = await fetch('/api/tv-info/' + encodeURIComponent(DEVICE_ID));
-    const tv = await res.json();
-    if (tv.name) tvNameLabel.textContent = tv.name;
-    if (tv.current_video && tv.playback_status !== 'stopped') {
-      // Detect media type from filename extension
-      const imgExts = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i;
-      const mediaType = imgExts.test(tv.current_video) ? 'image' : 'video';
-      loadMedia(tv.current_video, !!tv.loop_enabled, tv.loop_duration || 0, mediaType);
-      if (tv.playback_status === 'paused') pauseMedia();
-    }
-  } catch (e) {
-    console.error('Failed to load current state', e);
-  }
-}
-
-// Auto-restart looping video when it ends (if loop but has duration timer)
-videoEl.addEventListener('ended', () => {
-  if (currentLoop && currentLoopDuration > 0 && loopSecondsLeft > 0) {
-    videoEl.currentTime = 0;
-    videoEl.play().catch(console.error);
+  } else if (data.type === 'pause') {
+    clearItemTimer();
+    vid.pause();
+    ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '') + ' (paused)';
+  } else if (data.type === 'stop') {
+    stopAll();
   }
 });
 
-connect();
+// ─── RESTORE STATE ON RECONNECT ───
+async function restoreState() {
+  try {
+    const tv = await fetch('/api/tv-info/' + encodeURIComponent(DEVICE_ID)).then(r => r.json());
+    tvLabel.textContent = tv.name || DEVICE_ID;
+    if (tv.playback_status === 'playing' && tv.playlist) {
+      startPlaylist(tv.playlist, !!tv.loop_enabled, tv.loop_until);
+    }
+  } catch (e) { console.error(e); }
+}
 </script>
-
 </body>
 </html>

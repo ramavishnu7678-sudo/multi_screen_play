@@ -7,120 +7,79 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-
 <div class="app">
-
   <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-icon">▣</div>
-      <div class="brand-text">
-        <div class="name">InnoSpace</div>
-        <div class="sub">Global Network</div>
-      </div>
-    </div>
+    <div class="brand"><div class="brand-icon">▣</div><div><div class="brand-name">InnoSpace</div><div class="brand-sub">Global Network</div></div></div>
     <nav class="nav">
-      <a href="/"><span class="icon">⌂</span> Home</a>
-      <a href="/devices" class="active"><span class="icon">▭</span> Devices</a>
-      <a href="/content"><span class="icon">▤</span> Content</a>
+      <a href="/"><span class="ni">⌂</span> Home</a>
+      <a href="/devices" class="active"><span class="ni">▭</span> Devices</a>
+      <a href="/content"><span class="ni">▤</span> Content</a>
     </nav>
   </aside>
-
   <div class="main">
-
     <div class="topnav">
-      <div class="search-box">🔍 Search devices, groups…</div>
-      <div class="topnav-right">
-        <span style="font-size:18px;color:var(--text-faint)">🔔</span>
-        <span style="font-size:18px;color:var(--text-faint)">⚙</span>
+      <div class="search">🔍 Search devices…</div>
+      <div class="topnav-r">
+        <button class="icon-btn">🔔</button><button class="icon-btn">⚙</button>
         <div class="user-chip"><div class="avatar">A</div> Admin User</div>
       </div>
     </div>
-
     <div class="content">
-
       <div class="page-head">
-        <div>
-          <h1>Registered Devices</h1>
-          <p>Manage and monitor your digital signage network.</p>
-        </div>
-        <div class="head-actions">
-          <button class="btn btn-outline" onclick="window.location='/'">Manage Groups</button>
-          <button class="btn btn-primary" onclick="openAddDeviceModal()">+ Add Device</button>
+        <div><h1>Registered Devices</h1><p>Manage and monitor your global signage network.</p></div>
+        <div class="head-r">
+          <button class="btn btn-primary" onclick="openModal('addDeviceModal')">+ Add Device</button>
         </div>
       </div>
-
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Device Name</th>
-              <th>Unique ID</th>
-              <th>Client URL</th>
+              <th>UUID</th>
               <th>IP Address</th>
               <th>Status</th>
-              <th>Currently Playing</th>
-              <th>Last Heartbeat</th>
+              <th>Now Playing</th>
+              <th>Playback</th>
+              <th>Last Seen</th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="deviceTableBody">
-            <tr><td colspan="8" class="empty-row">Loading devices…</td></tr>
-          </tbody>
+          <tbody id="tvBody"><tr><td colspan="8" class="empty-row">Loading…</td></tr></tbody>
         </table>
       </div>
-
     </div>
   </div>
 </div>
 
-<!-- ADD DEVICE MODAL -->
-<div class="modal-overlay" id="addDeviceModal">
+<!-- ADD DEVICE -->
+<div class="overlay" id="addDeviceModal">
   <div class="modal">
-    <div class="modal-head">
-      <h3>Add Device</h3>
-      <button class="modal-close" onclick="closeModal('addDeviceModal')">✕</button>
-    </div>
+    <div class="modal-head"><h3>Add Device</h3><button class="modal-x" onclick="closeModal('addDeviceModal')">✕</button></div>
     <div class="modal-body">
-      <div>
-        <label class="field-label">Device Name</label>
-        <input type="text" id="newDeviceName" placeholder="e.g. Reception Display">
+      <div class="field"><label class="label">Device Name *</label><input type="text" id="nd-name" placeholder="e.g. Reception Display"></div>
+      <div class="row-2">
+        <div class="field"><label class="label">Location</label><input type="text" id="nd-loc" placeholder="e.g. Lobby"></div>
+        <div class="field"><label class="label">IP Address</label><input type="text" id="nd-ip" placeholder="192.168.1.x"></div>
       </div>
-      <div>
-        <label class="field-label">Location (optional)</label>
-        <input type="text" id="newDeviceLocation" placeholder="e.g. Main Lobby, 2nd Floor">
-      </div>
-      <div>
-        <label class="field-label">IP Address (optional)</label>
-        <input type="text" id="newDeviceIp" placeholder="e.g. 192.168.1.104">
-      </div>
-      <p style="font-size:12px;color:var(--text-faint)">A unique device ID (UUID) is generated automatically.</p>
     </div>
-    <div class="modal-footer">
+    <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('addDeviceModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitAddDevice()">Add Device</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="deviceAddedModal">
+<div class="overlay" id="createdModal">
   <div class="modal">
-    <div class="modal-head">
-      <h3>✅ Device Created</h3>
-      <button class="modal-close" onclick="closeModal('deviceAddedModal')">✕</button>
-    </div>
+    <div class="modal-head"><h3>✅ Device Created</h3><button class="modal-x" onclick="closeModal('createdModal')">✕</button></div>
     <div class="modal-body">
-      <div>
-        <label class="field-label">Unique ID (UUID)</label>
-        <input type="text" id="createdUid" readonly class="mono">
-      </div>
-      <div>
-        <label class="field-label">Client Link — open this on the TV</label>
-        <input type="text" id="createdLink" readonly>
-      </div>
+      <div class="field"><label class="label">UUID</label><input type="text" id="cr-uid" readonly class="mono"></div>
+      <div class="field"><label class="label">Client URL</label><input type="text" id="cr-link" readonly></div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="copyCreatedLink()">Copy Link</button>
-      <button class="btn btn-primary" onclick="closeModal('deviceAddedModal')">Done</button>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="copyField('cr-link')">📋 Copy</button>
+      <button class="btn btn-primary" onclick="closeModal('createdModal')">Done</button>
     </div>
   </div>
 </div>
@@ -132,117 +91,65 @@ let allDevices = [];
 
 function timeAgo(iso) {
   if (!iso) return 'Never';
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return diff + 's ago';
-  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
-  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
-  return Math.floor(diff/86400) + 'd ago';
-}
-
-function statusBadge(status) {
-  const map = { playing: '🟢 Playing', paused: '🟡 Paused', stopped: '⚪ Idle' };
-  return map[status] || '⚪ Idle';
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }
 
 function renderTable() {
-  const tbody = document.getElementById('deviceTableBody');
+  const tbody = document.getElementById('tvBody');
   if (!allDevices.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No devices registered yet. Click "+ Add Device" to get started.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No devices registered yet.</td></tr>';
     return;
   }
-
-  tbody.innerHTML = allDevices.map(d => {
-    const clientUrl = window.location.origin + '/client/' + d.device_id;
-    return `
+  tbody.innerHTML = allDevices.map(d => `
     <tr>
-      <td><b>${d.name}</b>${d.location ? `<br><span class="mono" style="font-size:11px">${d.location}</span>` : ''}</td>
+      <td><b>${d.name}</b>${d.location ? `<br><span class="mono" style="font-size:10.5px">${d.location}</span>` : ''}</td>
       <td class="mono">${d.uid}</td>
-      <td class="mono" style="font-size:11px;max-width:260px;word-break:break-all">
-        <a href="${clientUrl}" target="_blank" style="color:var(--text-link)">${clientUrl}</a>
-      </td>
       <td>${d.ip_address || '—'}</td>
-      <td><span class="status-text ${d.is_online ? 'online' : 'offline'}"><span class="dot"></span>${d.is_online ? 'Online' : 'Offline'}</span></td>
-      <td>${d.current_video || '—'} ${d.current_video ? statusBadge(d.playback_status) : ''}</td>
+      <td><span class="status-chip ${d.is_online ? 'online' : 'offline'}"><span class="dot"></span>${d.is_online ? 'Online' : 'Offline'}</span></td>
+      <td>${d.current_playlist_id ? '🎬 Playlist #' + d.current_playlist_id : '—'}</td>
+      <td><span class="status-chip ${d.playback_status}">${d.playback_status || 'stopped'}</span></td>
       <td>${timeAgo(d.last_seen)}</td>
-      <td>
-        <a href="${clientUrl}" target="_blank"><button class="btn btn-outline btn-sm">Open</button></a>
-        <button class="btn btn-sm" style="background:#d97706;color:white" onclick="pauseDevice('${d.device_id}')">&#x23F8;</button>
-        <button class="btn btn-sm" style="background:#dc2626;color:white" onclick="stopDevice('${d.device_id}')">&#x23F9;</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteDevice(${d.id},'${d.name.replace(/'/g,'')}')">🗑</button>
+      <td style="display:flex;gap:5px;flex-wrap:wrap">
+        <a href="/client/${encodeURIComponent(d.device_id)}" target="_blank"><button class="btn btn-outline btn-xs">Open TV</button></a>
+        <button class="btn btn-danger btn-xs" onclick="deleteDevice(${d.id},'${d.name.replace(/'/g,'')}')">🗑</button>
       </td>
-    </tr>
-  `;}).join('');
+    </tr>`).join('');
 }
 
 async function loadDevices() {
-  const res = await fetch('/api/tvs');
-  allDevices = await res.json();
+  allDevices = await fetch('/api/tvs').then(r => r.json());
   renderTable();
 }
 
-async function pauseDevice(deviceId) {
-  await fetch('/api/pause-content', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ targetType: 'tv', targetId: deviceId })
-  });
-}
-
-async function stopDevice(deviceId) {
-  await fetch('/api/stop-content', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ targetType: 'tv', targetId: deviceId })
-  });
-}
-
 async function deleteDevice(id, name) {
-  if (!confirm(`Remove "${name}" from the system?`)) return;
-  const res = await fetch(`/api/tvs/${id}`, { method: 'DELETE' });
-  const result = await res.json();
-  alert(result.message);
+  if (!confirm(`Remove "${name}"?`)) return;
+  await fetch(`/api/tvs/${id}`, { method: 'DELETE' });
   loadDevices();
-}
-
-function openAddDeviceModal() {
-  document.getElementById('newDeviceName').value = '';
-  document.getElementById('newDeviceLocation').value = '';
-  document.getElementById('newDeviceIp').value = '';
-  openModal('addDeviceModal');
 }
 
 async function submitAddDevice() {
-  const name = document.getElementById('newDeviceName').value.trim();
-  const deviceLocation = document.getElementById('newDeviceLocation').value.trim();
-  const ip_address = document.getElementById('newDeviceIp').value.trim();
+  const name = document.getElementById('nd-name').value.trim();
   if (!name) return alert('Enter a device name');
-
-  const res = await fetch('/api/tvs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, location: deviceLocation, ip_address })
-  });
-  const tv = await res.json();
+  const tv = await fetch('/api/tvs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, location: document.getElementById('nd-loc').value.trim(), ip_address: document.getElementById('nd-ip').value.trim() })
+  }).then(r => r.json());
   closeModal('addDeviceModal');
-
-  document.getElementById('createdUid').value = tv.uid;
-  document.getElementById('createdLink').value = window.location.origin + '/client/' + tv.device_id;
-  openModal('deviceAddedModal');
-
+  document.getElementById('cr-uid').value = tv.uid;
+  document.getElementById('cr-link').value = `${location.origin}/client/${tv.device_id}`;
+  openModal('createdModal');
   loadDevices();
 }
 
-function copyCreatedLink() {
-  const input = document.getElementById('createdLink');
-  input.select();
-  document.execCommand('copy');
-}
-
+function copyField(id) { const el = document.getElementById(id); el.select(); document.execCommand('copy'); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-socket.on('tv-list-full', (tvs) => { allDevices = tvs; renderTable(); });
-
+socket.on('tv-list-full', tvs => { allDevices = tvs; renderTable(); });
 loadDevices();
 </script>
-
 </body>
 </html>

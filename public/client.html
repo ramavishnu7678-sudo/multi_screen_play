@@ -84,7 +84,57 @@ let currentIdx = 0;
 let loopEnabled = false;
 let loopUntil = null;
 let itemTimer = null;
-let progressStart = null;
+let isPaused = false; // admin-issued pause (don't auto-resume this)
+
+// ─── WAKE LOCK — prevents screen/browser from sleeping ───
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake lock acquired');
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake lock released — re-requesting');
+        requestWakeLock();
+      });
+    }
+  } catch (e) {
+    console.warn('Wake lock not available:', e.message);
+  }
+}
+
+// Re-acquire wake lock when tab becomes visible again
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    await requestWakeLock();
+    // If video was playing before page hid, resume it
+    if (!isPaused && playlist && vid.style.display !== 'none' && vid.paused) {
+      console.log('Page became visible — resuming video');
+      vid.play().catch(console.error);
+    }
+  }
+});
+
+// ─── AUTO-RESUME if browser pauses video unexpectedly ───
+vid.addEventListener('pause', () => {
+  // Only auto-resume if this was NOT an admin-issued pause
+  if (!isPaused && playlist) {
+    console.log('Unexpected pause detected — resuming');
+    setTimeout(() => {
+      if (!isPaused && vid.paused) {
+        vid.play().catch(console.error);
+      }
+    }, 500);
+  }
+});
+
+// ─── KEEP-ALIVE PING every 30s to prevent browser throttling ───
+setInterval(() => {
+  if (!isPaused && playlist && vid.style.display !== 'none' && vid.paused) {
+    console.log('Keep-alive: video was paused unexpectedly — resuming');
+    vid.play().catch(console.error);
+  }
+}, 30000);
 
 // ─── SHOW IDLE ───
 function showIdle() {
@@ -101,13 +151,13 @@ function startPlaylist(pl, loop, until) {
   loopEnabled = loop;
   loopUntil = until ? new Date(until) : null;
   currentIdx = 0;
+  isPaused = false;
   playCurrentItem();
 }
 
 function playCurrentItem() {
   if (!playlist || !playlist.items || !playlist.items.length) return showIdle();
 
-  // Check loop_until — stop if expired
   if (loopUntil && new Date() >= loopUntil) return stopAll();
 
   const item = playlist.items[currentIdx];
@@ -119,14 +169,13 @@ function playCurrentItem() {
   ibTitle.textContent = item.original_name;
   ibType.textContent = item.media_type === 'image' ? '🖼 Image' : '🎬 Video';
   ibPos.textContent = `Item ${currentIdx + 1} of ${playlist.items.length}`;
-  ibLoop.textContent = loopEnabled ? (loopUntil ? '🔁 Looping until ' + loopUntil.toLocaleString() : '🔁 Looping') : '';
+  ibLoop.textContent = loopEnabled ? (loopUntil ? '🔁 Until ' + loopUntil.toLocaleString() : '🔁 Looping') : '';
 
   if (item.media_type === 'image') {
     vid.style.display = 'none';
     vid.pause();
     img.src = '/media/' + item.filename;
     img.style.display = 'block';
-    // Images: hold for display_duration seconds then advance
     startProgressBar(item.display_duration || 10);
     itemTimer = setTimeout(() => advanceItem(), (item.display_duration || 10) * 1000);
   } else {
@@ -134,10 +183,9 @@ function playCurrentItem() {
     vid.loop = false;
     vid.src = '/media/' + item.filename;
     vid.style.display = 'block';
-    vid.play().catch(console.error);
-    // Videos: play to natural end (no timer), progress bar not used
     ibBar.style.transition = 'none';
     ibBar.style.width = '0';
+    vid.play().catch(console.error);
   }
 }
 
@@ -159,6 +207,7 @@ function advanceItem() {
 function stopAll() {
   clearItemTimer();
   playlist = null;
+  isPaused = false;
   vid.pause(); vid.src = '';
   img.src = '';
   showIdle();
@@ -171,13 +220,12 @@ function clearItemTimer() {
 function startProgressBar(durationSec) {
   ibBar.style.transition = 'none';
   ibBar.style.width = '0';
-  // force reflow then start transition
   void ibBar.offsetWidth;
   ibBar.style.transition = `width ${durationSec}s linear`;
   ibBar.style.width = '100%';
 }
 
-// ─── VIDEO ENDED ───
+// ─── VIDEO ENDED → advance ───
 vid.addEventListener('ended', () => advanceItem());
 
 // ─── SOCKET ───
@@ -186,6 +234,7 @@ const socket = io();
 socket.on('connect', () => {
   conn.textContent = '🟢 Connected'; conn.className = 'on';
   socket.emit('register-device', DEVICE_ID);
+  requestWakeLock();
   restoreState();
 });
 
@@ -196,17 +245,19 @@ socket.on('disconnect', () => {
 socket.on('action', data => {
   console.log('action:', data);
   if (data.type === 'load_playlist') {
+    isPaused = false;
     startPlaylist(data.playlist, data.loop, data.loopUntil);
   } else if (data.type === 'resume') {
+    isPaused = false;
     vid.play().catch(console.error);
-    if (ibTitle.textContent.endsWith(' (paused)')) {
-      ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '');
-    }
+    ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '');
   } else if (data.type === 'pause') {
+    isPaused = true; // mark as intentional so auto-resume doesn't fight it
     clearItemTimer();
     vid.pause();
     ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '') + ' (paused)';
   } else if (data.type === 'stop') {
+    isPaused = false;
     stopAll();
   }
 });
@@ -221,6 +272,13 @@ async function restoreState() {
     }
   } catch (e) { console.error(e); }
 }
+
+// ─── FIRST CLICK to unlock audio ───
+document.addEventListener('click', () => {
+  if (vid.paused && !isPaused && playlist) {
+    vid.play().catch(console.error);
+  }
+}, { once: true });
 </script>
 </body>
 </html>

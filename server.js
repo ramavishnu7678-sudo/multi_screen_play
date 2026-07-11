@@ -360,6 +360,18 @@ io.on("connection", (socket) => {
     broadcastTvList();
   });
 
+  socket.on("playback-status", ({ deviceId, status }) => {
+
+  db.prepare(`
+    UPDATE tvs
+    SET playback_status = ?
+    WHERE device_id = ?
+  `).run(status, deviceId);
+
+  broadcastTvList();
+
+});
+
   // Admin sends control commands
   socket.on("control", ({ targetType, targetId, action, playlist_id, loop, loopUntil }) => {
     if (action === "play" && playlist_id) {

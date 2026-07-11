@@ -117,15 +117,25 @@ document.addEventListener('visibilitychange', async () => {
 
 // ─── AUTO-RESUME if browser pauses video unexpectedly ───
 vid.addEventListener('pause', () => {
+
+  // Video already completed → don't resume
+  if (vid.ended) return;
+
   // Only auto-resume if this was NOT an admin-issued pause
   if (!isPaused && playlist) {
+
     console.log('Unexpected pause detected — resuming');
+
     setTimeout(() => {
-      if (!isPaused && vid.paused) {
+
+      if (!isPaused && playlist && vid.paused && !vid.ended) {
         vid.play().catch(console.error);
       }
+
     }, 500);
+
   }
+
 });
 
 // ─── KEEP-ALIVE PING every 30s to prevent browser throttling ───
@@ -152,6 +162,12 @@ function startPlaylist(pl, loop, until) {
   loopUntil = until ? new Date(until) : null;
   currentIdx = 0;
   isPaused = false;
+
+  socket.emit("playback-status", {
+    deviceId: DEVICE_ID,
+    status: "playing"
+  });
+
   playCurrentItem();
 }
 
@@ -208,8 +224,15 @@ function stopAll() {
   clearItemTimer();
   playlist = null;
   isPaused = false;
-  vid.pause(); vid.src = '';
+  vid.pause();
+  vid.src = '';
   img.src = '';
+
+  socket.emit("playback-status", {
+    deviceId: DEVICE_ID,
+    status: "stopped"
+  });
+
   showIdle();
 }
 
@@ -226,7 +249,13 @@ function startProgressBar(durationSec) {
 }
 
 // ─── VIDEO ENDED → advance ───
-vid.addEventListener('ended', () => advanceItem());
+vid.addEventListener('ended', () => {
+
+  console.log("Video completed");
+
+  advanceItem();
+
+});
 
 // ─── SOCKET ───
 const socket = io();

@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>InnoSpace · Devices</title>
 <link rel="stylesheet" href="/style.css">
+<style>
+  .pl-preview { display:none; background:#f8fafc; border-top:1px solid var(--border); padding:10px 16px; }
+  .pl-preview.open { display:block; }
+  .pl-items { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .pl-item { display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; }
+  .pl-item .pi-icon { font-size:14px; }
+  .pl-item .pi-name { max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
+  .pl-name-link { color:var(--blue); cursor:pointer; text-decoration:none; font-weight:600; font-size:12.5px; display:flex; align-items:center; gap:5px; }
+  .pl-name-link:hover { text-decoration:underline; }
+  .pl-toggle-icon { font-size:10px; transition:transform .2s; display:inline-block; }
+  .pl-toggle-icon.open { transform:rotate(90deg); }
+</style>
 </head>
 <body>
 <div class="app">
@@ -88,6 +100,7 @@
 <script>
 const socket = io();
 let allDevices = [];
+const playlistCache = {};
 
 function timeAgo(iso) {
   if (!iso) return 'Never';
@@ -104,20 +117,102 @@ function renderTable() {
     tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No devices registered yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = allDevices.map(d => `
-    <tr>
+
+  tbody.innerHTML = allDevices.map(d => {
+    // Fix 2: show real IP address
+    const ip = d.ip_address && d.ip_address !== '' ? d.ip_address : '—';
+
+    // Fix 1 & 3: show playlist name + clickable to expand
+    let nowPlaying = '—';
+    if (d.current_playlist_id) {
+      nowPlaying = `
+        <span class="pl-name-link" onclick="togglePlaylist(${d.current_playlist_id}, ${d.id})">
+          <span class="pl-toggle-icon" id="toggle-icon-${d.id}">▶</span>
+          🎬 ${playlistCache[d.current_playlist_id] ? playlistCache[d.current_playlist_id].name : 'Playlist #' + d.current_playlist_id}
+        </span>`;
+    }
+
+    return `
+    <tr id="row-${d.id}">
       <td><b>${d.name}</b>${d.location ? `<br><span class="mono" style="font-size:10.5px">${d.location}</span>` : ''}</td>
-      <td class="mono">${d.uid}</td>
-      <td>${d.ip_address || '—'}</td>
+      <td class="mono" style="font-size:11px">${d.uid}</td>
+      <td><span class="mono" style="font-size:12px">${ip}</span></td>
       <td><span class="status-chip ${d.is_online ? 'online' : 'offline'}"><span class="dot"></span>${d.is_online ? 'Online' : 'Offline'}</span></td>
-      <td>${d.current_playlist_id ? '🎬 Playlist #' + d.current_playlist_id : '—'}</td>
-      <td><span class="status-chip ${d.playback_status}">${d.playback_status || 'stopped'}</span></td>
+      <td>${nowPlaying}</td>
+      <td><span class="status-chip ${d.playback_status || 'stopped'}">${d.playback_status || 'stopped'}</span></td>
       <td>${timeAgo(d.last_seen)}</td>
       <td style="display:flex;gap:5px;flex-wrap:wrap">
         <a href="/client/${encodeURIComponent(d.device_id)}" target="_blank"><button class="btn btn-outline btn-xs">Open TV</button></a>
         <button class="btn btn-danger btn-xs" onclick="deleteDevice(${d.id},'${d.name.replace(/'/g,'')}')">🗑</button>
       </td>
-    </tr>`).join('');
+    </tr>
+    <tr id="pl-expand-${d.id}" style="display:none">
+      <td colspan="8" style="padding:0">
+        <div class="pl-preview open" id="pl-preview-${d.id}">Loading playlist…</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Pre-fetch playlists for devices that are playing
+  allDevices.filter(d => d.current_playlist_id).forEach(d => {
+    fetchPlaylist(d.current_playlist_id);
+  });
+}
+
+async function fetchPlaylist(plId) {
+  if (playlistCache[plId]) return playlistCache[plId];
+  const pl = await fetch(`/api/playlists/${plId}`).then(r => r.json()).catch(() => null);
+  if (pl) playlistCache[plId] = pl;
+  return pl;
+}
+
+async function togglePlaylist(plId, deviceId) {
+  const expandRow = document.getElementById(`pl-expand-${deviceId}`);
+  const preview = document.getElementById(`pl-preview-${deviceId}`);
+  const icon = document.getElementById(`toggle-icon-${deviceId}`);
+
+  const isOpen = expandRow.style.display !== 'none';
+  if (isOpen) {
+    expandRow.style.display = 'none';
+    icon.classList.remove('open');
+    return;
+  }
+
+  // Show the row and fetch playlist
+  expandRow.style.display = 'table-row';
+  icon.classList.add('open');
+
+  const pl = await fetchPlaylist(plId);
+  if (!pl || !pl.items || !pl.items.length) {
+    preview.innerHTML = '<span style="color:var(--faint);font-size:12px">No items in this playlist.</span>';
+    return;
+  }
+
+  // Update playlist name in the link
+  document.querySelectorAll(`#row-${deviceId} .pl-name-link`).forEach(el => {
+    const span = el.querySelector('.pl-toggle-icon');
+    el.innerHTML = '';
+    const icon2 = document.createElement('span');
+    icon2.className = 'pl-toggle-icon open';
+    icon2.id = `toggle-icon-${deviceId}`;
+    icon2.textContent = '▶';
+    el.appendChild(icon2);
+    el.appendChild(document.createTextNode(` 🎬 ${pl.name}`));
+  });
+
+  preview.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--dim);margin-bottom:8px">
+      📋 ${pl.name} — ${pl.items.length} item${pl.items.length !== 1 ? 's' : ''}
+    </div>
+    <div class="pl-items">
+      ${pl.items.map((item, i) => `
+        <div class="pl-item">
+          <span class="pi-icon">${item.media_type === 'image' ? '🖼' : '🎬'}</span>
+          <span style="color:var(--faint);font-size:10px;font-weight:700">${i + 1}</span>
+          <span class="pi-name" title="${item.original_name}">${item.original_name}</span>
+          <span style="color:var(--faint);font-size:10px;text-transform:uppercase">${item.media_type}</span>
+        </div>`).join('')}
+    </div>`;
 }
 
 async function loadDevices() {
@@ -148,7 +243,9 @@ async function submitAddDevice() {
 function copyField(id) { const el = document.getElementById(id); el.select(); document.execCommand('copy'); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
 socket.on('tv-list-full', tvs => { allDevices = tvs; renderTable(); });
+
 loadDevices();
 </script>
 </body>

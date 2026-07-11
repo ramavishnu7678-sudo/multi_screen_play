@@ -134,6 +134,12 @@ app.get("/api/tvs/:tvId/playlists", (req, res) => {
   res.json(playlists);
 });
 
+app.get("/api/playlists/:id", (req, res) => {
+  const pl = getPlaylistWithItems(req.params.id);
+  if (!pl) return res.status(404).json({ message: "Not found" });
+  res.json(pl);
+});
+
 // List ALL playlists (for admin dashboard)
 app.get("/api/playlists", (req, res) => {
   const rows = db.prepare("SELECT * FROM playlists ORDER BY created_at DESC").all();
@@ -337,12 +343,19 @@ function sendToDevice(deviceId, payload, tvRow) {
 io.on("connection", (socket) => {
   socket.on("register-device", (deviceId) => {
     liveSockets.set(deviceId, socket.id);
+
+    // Capture real IP from socket handshake
+    const ip = socket.handshake.headers["x-forwarded-for"]
+      ? socket.handshake.headers["x-forwarded-for"].split(",")[0].trim()
+      : socket.handshake.address.replace("::ffff:", "");
+
     const tv = db.prepare("SELECT * FROM tvs WHERE device_id=?").get(deviceId);
     if (tv) {
-      db.prepare("UPDATE tvs SET is_online=1, last_seen=CURRENT_TIMESTAMP WHERE device_id=?").run(deviceId);
+      db.prepare("UPDATE tvs SET is_online=1, last_seen=CURRENT_TIMESTAMP, ip_address=COALESCE(NULLIF(?,''),ip_address) WHERE device_id=?")
+        .run(ip, deviceId);
     } else {
-      db.prepare("INSERT INTO tvs (uid,device_id,name,is_online,last_seen) VALUES (?,?,?,1,CURRENT_TIMESTAMP)")
-        .run(generateUUID(), deviceId, deviceId);
+      db.prepare("INSERT INTO tvs (uid,device_id,name,ip_address,is_online,last_seen) VALUES (?,?,?,?,1,CURRENT_TIMESTAMP)")
+        .run(generateUUID(), deviceId, deviceId, ip);
     }
     broadcastTvList();
   });

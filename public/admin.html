@@ -20,7 +20,6 @@
     </div>
     <nav class="nav">
       <a href="/" class="active"><span class="ni">⌂</span> Home</a>
-      <a href="/devices"><span class="ni">▭</span> Devices</a>
       <a href="/content"><span class="ni">▤</span> Content</a>
     </nav>
   </aside>
@@ -43,19 +42,46 @@
           <p id="overviewSub">Loading…</p>
         </div>
         <div class="head-r">
+          <div class="view-toggle">
+            <button class="toggle-btn active" id="gridViewBtn" onclick="setView('grid')">▦ Grid</button>
+            <button class="toggle-btn" id="listViewBtn" onclick="setView('list')">☰ List</button>
+          </div>
           <span class="pill online"><span class="dot"></span><span id="onlinePill">0 Online</span></span>
           <span class="pill offline"><span class="dot"></span><span id="offlinePill">0 Offline</span></span>
         </div>
       </div>
 
-      <!-- DEVICES -->
-      <div class="section">
+      <!-- DEVICES GRID VIEW -->
+      <div id="gridView" class="section">
         <div class="sec-head">
           <h2>▭ Devices</h2>
-          <a href="/devices" class="link">View all</a>
         </div>
         <div id="deviceGrid" class="device-grid">
           <div class="empty-state" style="grid-column:1/-1"><div class="ei">📺</div><h3>No devices yet</h3><p>Click "+ Add Device" to register your first screen.</p></div>
+        </div>
+      </div>
+
+      <!-- DEVICES LIST VIEW -->
+      <div id="listView" class="section" style="display:none">
+        <div class="sec-head">
+          <h2>▭ Devices</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Device Name</th>
+                <th>UUID</th>
+                <th>IP Address</th>
+                <th>Status</th>
+                <th>Now Playing</th>
+                <th>Playback</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="deviceListBody"><tr><td colspan="8" class="empty-row">Loading…</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -127,7 +153,12 @@
       <!-- Content builder: Library (left) → Loop List (right) -->
       <div class="pl-section">
         <div class="pl-left">
-          <h4>📂 Content Library — click to add</h4>
+          <h4>📂 Available Content</h4>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button class="btn btn-outline btn-xs" onclick="selectAllContent()">Select All</button>
+            <button class="btn btn-ghost btn-xs" onclick="clearContentSelection()">Clear</button>
+            <button class="btn btn-primary btn-xs" onclick="addSelectedToLoop()">Add Selected</button>
+          </div>
           <div id="plLibList" class="lib-list"><div style="padding:16px;text-align:center;color:var(--faint);font-size:12px">Loading…</div></div>
         </div>
         <div class="pl-right">
@@ -165,6 +196,7 @@
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('playModal')">Cancel</button>
+      <button class="btn btn-outline" onclick="saveAndPlay()">💾 Save & Play</button>
       <button class="btn btn-primary" id="pushBtn" onclick="submitPlayContent()">▶ Push to Screen</button>
     </div>
   </div>
@@ -199,11 +231,14 @@ const socket = io();
 let allDevices = [], allGroups = [], allContent = [];
 let playTarget = { type: 'tv', id: null, label: '' };
 let loopItems = []; // [{content_id, original_name, media_type, display_duration}]
+let currentView = 'grid';
+let playlistCache = {};
 
 // ─── DATA LOADING ───
 async function loadDevices() {
   allDevices = await fetch('/api/tvs').then(r => r.json());
   renderDeviceGrid();
+  renderDeviceList();
   renderOverview();
 }
 async function loadGroups() {
@@ -224,6 +259,15 @@ function renderOverview() {
   document.getElementById('offlinePill').textContent = `${allDevices.length - on} Offline`;
 }
 
+// ─── VIEW TOGGLE ───
+function setView(view) {
+  currentView = view;
+  document.getElementById('gridView').style.display = view === 'grid' ? 'block' : 'none';
+  document.getElementById('listView').style.display = view === 'list' ? 'block' : 'none';
+  document.getElementById('gridViewBtn').classList.toggle('active', view === 'grid');
+  document.getElementById('listViewBtn').classList.toggle('active', view === 'list');
+}
+
 // ─── DEVICE GRID ───
 function renderDeviceGrid() {
   const grid = document.getElementById('deviceGrid');
@@ -233,7 +277,10 @@ function renderDeviceGrid() {
   }
   grid.innerHTML = allDevices.map(d => {
     const online = d.is_online;
-    const statusLabel = { playing: '▶ Playing', paused: '⏸ Paused', stopped: '— Idle' }[d.playback_status] || '— Idle';
+    const statusLabel = { playing: '▶ Playing', paused: '⏸ Paused', resumed: '▶ Resumed', stopped: '⏹ Stopped', completed: '✅ Completed' }[d.playback_status] || '— Idle';
+    const ip = d.ip_address && d.ip_address !== '' ? d.ip_address : '—';
+    const loopStatus = d.loop_enabled ? (d.loop_until ? `Until ${new Date(d.loop_until).toLocaleString()}` : 'Looping') : 'Off';
+    
     return `
     <div class="device-card">
       <div class="d-thumb ${online ? '' : 'offline'}">
@@ -248,12 +295,121 @@ function renderDeviceGrid() {
       </div>
       <div class="d-body">
         <div class="d-name">${d.name}</div>
+        <div class="d-meta">UUID: <span class="mono" style="font-size:10px">${d.uid}</span></div>
+        <div class="d-meta">IP: <span class="mono" style="font-size:10px">${ip}</span></div>
         <div class="d-meta">🕐 ${d.last_seen ? timeAgo(d.last_seen) : 'Never connected'}</div>
         <div class="d-status ${d.playback_status}">${statusLabel}</div>
-        <div class="d-uid">#${d.uid.slice(0,8)}</div>
+        <div class="d-meta">Now Playing: <span class="d-now-playing" id="now-playing-${d.id}">—</span></div>
+        <div class="d-meta">Playlist: <span class="d-playlist" id="playlist-${d.id}">—</span></div>
+        <div class="d-meta">Loop: <span class="d-loop">${loopStatus}</span></div>
+        <div class="d-loop-list" id="loop-list-${d.id}"><div style="color:var(--faint);font-size:11px">No active playlist</div></div>
       </div>
     </div>`;
   }).join('');
+  
+  // Fetch playlist data for devices with active playlists
+  allDevices.forEach(d => {
+    if (d.current_playlist_id) {
+      updateDeviceCardPlaylist(d);
+    }
+  });
+}
+
+// ─── UPDATE DEVICE CARD PLAYLIST INFO ───
+async function updateDeviceCardPlaylist(d) {
+  const pl = await fetchPlaylist(d.current_playlist_id);
+  if (!pl) return;
+  
+  const currentIdx = d.current_item_index || 0;
+  const currentItem = pl.items[currentIdx];
+  
+  // Update Now Playing
+  const nowPlayingEl = document.getElementById(`now-playing-${d.id}`);
+  if (nowPlayingEl) {
+    nowPlayingEl.textContent = currentItem ? currentItem.original_name : (d.playback_status === 'completed' ? '—' : '—');
+  }
+  
+  // Update Playlist Name
+  const playlistEl = document.getElementById(`playlist-${d.id}`);
+  if (playlistEl) {
+    playlistEl.textContent = pl.name;
+  }
+  
+  // Update Loop List
+  const loopListEl = document.getElementById(`loop-list-${d.id}`);
+  if (loopListEl) {
+    const loopListHtml = pl.items.map((item, i) => {
+      const isCurrent = i === currentIdx;
+      return `<div class="loop-item-mini ${isCurrent ? 'current' : ''}">
+        ${isCurrent ? '▶ ' : ''}${item.original_name}
+      </div>`;
+    }).join('');
+    loopListEl.innerHTML = loopListHtml;
+  }
+}
+
+// ─── UPDATE DEVICE LIST PLAYLIST INFO ───
+async function updateDeviceListPlaylist(d) {
+  const pl = await fetchPlaylist(d.current_playlist_id);
+  if (!pl) return;
+  
+  const currentIdx = d.current_item_index || 0;
+  const currentItem = pl.items[currentIdx];
+  
+  // Update Now Playing in list view
+  const nowPlayingEl = document.getElementById(`now-playing-${d.id}`);
+  if (nowPlayingEl) {
+    nowPlayingEl.textContent = currentItem ? currentItem.original_name : (d.playback_status === 'completed' ? '—' : '—');
+  }
+}
+
+// ─── DEVICE LIST VIEW ───
+function renderDeviceList() {
+  const tbody = document.getElementById('deviceListBody');
+  if (!allDevices.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No devices registered yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = allDevices.map(d => {
+    const online = d.is_online;
+    const statusLabel = { playing: '▶ Playing', paused: '⏸ Paused', resumed: '▶ Resumed', stopped: '⏹ Stopped', completed: '✅ Completed' }[d.playback_status] || '— Idle';
+    const ip = d.ip_address && d.ip_address !== '' ? d.ip_address : '—';
+    
+    let nowPlaying = '—';
+    if (d.current_playlist_id) {
+      fetchPlaylist(d.current_playlist_id).then(pl => {
+        if (pl && pl.items[d.current_item_index]) {
+          const nowPlayingEl = document.getElementById(`now-playing-${d.id}`);
+          if (nowPlayingEl) nowPlayingEl.textContent = pl.items[d.current_item_index].original_name;
+        }
+      });
+    }
+    
+    return `
+    <tr>
+      <td><b>${d.name}</b></td>
+      <td class="mono" style="font-size:11px">${d.uid}</td>
+      <td><span class="mono" style="font-size:12px">${ip}</span></td>
+      <td><span class="status-chip ${online ? 'online' : 'offline'}"><span class="dot"></span>${online ? 'Online' : 'Offline'}</span></td>
+      <td id="now-playing-${d.id}">${nowPlaying}</td>
+      <td><span class="status-chip ${d.playback_status || 'stopped'}">${statusLabel}</span></td>
+      <td>${d.last_seen ? timeAgo(d.last_seen) : 'Never'}</td>
+      <td style="display:flex;gap:5px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-xs" onclick="sendControl('resume','tv','${d.device_id}')">▶ Resume</button>
+        <button class="btn btn-amber btn-xs" onclick="sendControl('pause','tv','${d.device_id}')">⏸ Pause</button>
+        <button class="btn btn-danger btn-xs" onclick="sendControl('stop','tv','${d.device_id}')">⏹ Stop</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── FETCH PLAYLIST ───
+async function fetchPlaylist(plId) {
+  if (playlistCache[plId]) return playlistCache[plId];
+  const pl = await fetch(`/api/playlists/${plId}`).then(r => r.json()).catch(() => null);
+  if (pl) playlistCache[plId] = pl;
+  return pl;
 }
 
 // ─── GROUP GRID ───
@@ -320,11 +476,36 @@ function renderLibList() {
     return;
   }
   container.innerHTML = allContent.map(c => `
-    <div class="lib-item" onclick="addToLoop(${c.id},'${esc(c.original_name)}','${c.media_type}')">
+    <div class="lib-item">
+      <input type="checkbox" class="lib-check" value="${c.id}" data-name="${esc(c.original_name)}" data-type="${c.media_type}">
       <span class="li-icon">${c.media_type === 'image' ? '🖼' : '🎬'}</span>
       <span class="li-name" title="${c.original_name}">${c.original_name}</span>
-      <span class="li-add">＋</span>
+      <span class="li-meta" style="color:var(--faint);font-size:10px">${c.media_type}</span>
     </div>`).join('');
+}
+
+// ─── MULTI-SELECT FUNCTIONS ───
+function selectAllContent() {
+  document.querySelectorAll('.lib-check').forEach(cb => cb.checked = true);
+}
+
+function clearContentSelection() {
+  document.querySelectorAll('.lib-check').forEach(cb => cb.checked = false);
+}
+
+function addSelectedToLoop() {
+  const selected = document.querySelectorAll('.lib-check:checked');
+  if (!selected.length) return alert('Select at least one content item');
+  
+  selected.forEach(cb => {
+    const content_id = parseInt(cb.value);
+    const original_name = cb.dataset.name;
+    const media_type = cb.dataset.type;
+    loopItems.push({ content_id, original_name, media_type, display_duration: 10 });
+  });
+  
+  clearContentSelection();
+  renderLoopList();
 }
 
 // ─── LOOP LIST (right panel) ───
@@ -412,6 +593,52 @@ async function submitPlayContent() {
   loadDevices();
 }
 
+// ─── SAVE & PLAY (append to existing playlist) ───
+async function saveAndPlay() {
+  if (!loopItems.length) return alert('Add at least one content item to the loop list');
+  
+  // Check if target has an active playlist
+  let targetPlaylistId = null;
+  if (playTarget.type === 'tv') {
+    const tv = allDevices.find(d => d.device_id === playTarget.id);
+    if (tv && tv.current_playlist_id && tv.playback_status !== 'stopped') {
+      targetPlaylistId = tv.current_playlist_id;
+    }
+  }
+  
+  if (targetPlaylistId) {
+    // Append to existing playlist
+    const pl = await fetch(`/api/playlists/${targetPlaylistId}/append`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: loopItems.map(i => ({ content_id: i.content_id, display_duration: i.display_duration }))
+      })
+    }).then(r => r.json());
+    
+    // Update the client with the new playlist without restarting
+    const socketPayload = {
+      type: 'update_playlist',
+      playlist: pl,
+      preservePlayback: true
+    };
+    
+    if (playTarget.type === 'tv') {
+      socket.emit('control', { targetType: 'tv', targetId: playTarget.id, action: 'update_playlist', playlist: pl });
+    } else if (playTarget.type === 'group') {
+      socket.emit('control', { targetType: 'group', targetId: playTarget.id, action: 'update_playlist', playlist: pl });
+    }
+    
+    alert(`Added ${loopItems.length} items to existing playlist`);
+  } else {
+    // No active playlist, create new and play
+    await submitPlayContent();
+    return;
+  }
+  
+  closeModal('playModal');
+  loadDevices();
+}
+
 // ─── PAUSE / STOP CONTROL ───
 function sendControl(action, targetType, targetId) {
   socket.emit('control', { action, targetType, targetId });
@@ -481,7 +708,19 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 // ─── SOCKET LIVE UPDATES ───
-socket.on('tv-list-full', tvs => { allDevices = tvs; renderDeviceGrid(); renderOverview(); });
+socket.on('tv-list-full', tvs => { 
+  allDevices = tvs; 
+  renderDeviceGrid(); 
+  renderDeviceList(); 
+  renderOverview(); 
+  // Update playlist info for devices with active playlists
+  allDevices.forEach(d => {
+    if (d.current_playlist_id) {
+      updateDeviceCardPlaylist(d);
+      updateDeviceListPlaylist(d);
+    }
+  });
+});
 
 // ─── INIT ───
 loadDevices(); loadGroups(); loadContent();

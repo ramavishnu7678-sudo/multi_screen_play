@@ -205,3 +205,26 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
 
 /* ── FAB ── */
 .fab{position:fixed;bottom:22px;left:14px;width:194px}
+
+/* ── VIEW TOGGLE ── */
+.view-toggle{display:flex;gap:4px;background:var(--gray);padding:4px;border-radius:8px}
+.toggle-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;background:transparent;color:var(--dim);cursor:pointer;transition:all .15s}
+.toggle-btn:hover{background:var(--panel);color:var(--text)}
+.toggle-btn.active{background:var(--panel);color:var(--blue);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+
+/* ── LOOP LIST MINI ── */
+.d-loop-list{margin-top:8px;padding:8px;background:var(--gray);border-radius:6px;max-height:120px;overflow-y:auto;font-size:11px}
+.loop-item-mini{padding:3px 6px;border-radius:4px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loop-item-mini.current{background:var(--blue-light);color:var(--blue);font-weight:600}
+.d-now-playing{font-weight:600;color:var(--text)}
+.d-playlist{color:var(--blue)}
+.d-loop{color:var(--faint)}
+
+/* ── LIBRARY CHECKBOX ── */
+.lib-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px}
+.lib-item:last-child{border-bottom:none}
+.lib-item:hover{background:var(--blue-light)}
+.lib-item input[type="checkbox"]{width:16px;height:16px;cursor:pointer;flex-shrink:0}
+.lib-item .li-icon{font-size:16px;flex-shrink:0;width:22px;text-align:center}
+.lib-item .li-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-item .li-meta{margin-left:auto;font-size:10px;color:var(--faint);text-transform:uppercase}

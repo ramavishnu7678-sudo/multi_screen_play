@@ -146,6 +146,22 @@ setInterval(() => {
   }
 }, 5000);
 
+// ─── EMIT PLAYBACK STATE ───
+function emitPlaybackState(status) {
+  const currentItem = playlist && playlist.items[currentIdx] ? playlist.items[currentIdx] : null;
+  socket.emit("playback-state", {
+    deviceId: DEVICE_ID,
+    status: status,
+    current_item_index: currentIdx,
+    current_filename: currentItem ? currentItem.filename : null,
+    current_original_name: currentItem ? currentItem.original_name : null,
+    playlist_id: playlist ? playlist.id : null,
+    playlist_name: playlist ? playlist.name : null,
+    loop_enabled: loopEnabled,
+    loop_until: loopUntil ? loopUntil.toISOString() : null
+  });
+}
+
 // ─── SHOW IDLE ───
 function showIdle() {
   vid.style.display = 'none';
@@ -163,10 +179,7 @@ function startPlaylist(pl, loop, until) {
   currentIdx = 0;
   isPaused = false;
 
-  socket.emit("playback-status", {
-    deviceId: DEVICE_ID,
-    status: "playing"
-  });
+  emitPlaybackState('playing');
 
   playCurrentItem();
 }
@@ -186,6 +199,8 @@ function playCurrentItem() {
   ibType.textContent = item.media_type === 'image' ? '🖼 Image' : '🎬 Video';
   ibPos.textContent = `Item ${currentIdx + 1} of ${playlist.items.length}`;
   ibLoop.textContent = loopEnabled ? (loopUntil ? '🔁 Until ' + loopUntil.toLocaleString() : '🔁 Looping') : '';
+
+  emitPlaybackState('playing');
 
   if (item.media_type === 'image') {
     vid.style.display = 'none';
@@ -213,6 +228,7 @@ function advanceItem() {
       currentIdx = 0;
       playCurrentItem();
     } else {
+      emitPlaybackState('completed');
       stopAll();
     }
   } else {
@@ -228,10 +244,7 @@ function stopAll() {
   vid.src = '';
   img.src = '';
 
-  socket.emit("playback-status", {
-    deviceId: DEVICE_ID,
-    status: "stopped"
-  });
+  emitPlaybackState('stopped');
 
   showIdle();
 }
@@ -276,15 +289,28 @@ socket.on('action', data => {
   if (data.type === 'load_playlist') {
     isPaused = false;
     startPlaylist(data.playlist, data.loop, data.loopUntil);
+  } else if (data.type === 'update_playlist') {
+    // Update playlist without restarting playback
+    if (playlist && data.playlist) {
+      const oldIdx = currentIdx;
+      playlist = data.playlist;
+      currentIdx = oldIdx; // Preserve current position
+      // Continue playing from current position
+      if (!isPaused) {
+        playCurrentItem();
+      }
+    }
   } else if (data.type === 'resume') {
     isPaused = false;
     vid.play().catch(console.error);
     ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '');
+    emitPlaybackState('resumed');
   } else if (data.type === 'pause') {
     isPaused = true; // mark as intentional so auto-resume doesn't fight it
     clearItemTimer();
     vid.pause();
     ibTitle.textContent = ibTitle.textContent.replace(' (paused)', '') + ' (paused)';
+    emitPlaybackState('paused');
   } else if (data.type === 'stop') {
     isPaused = false;
     stopAll();

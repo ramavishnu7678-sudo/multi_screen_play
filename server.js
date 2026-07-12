@@ -190,6 +190,26 @@ app.delete("/api/playlists/:id", (req, res) => {
   res.json({ message: `"${pl.name}" deleted` });
 });
 
+// Append items to existing playlist without restarting playback
+app.post("/api/playlists/:id/append", (req, res) => {
+  const { items } = req.body;
+  const pl = db.prepare("SELECT * FROM playlists WHERE id=?").get(req.params.id);
+  if (!pl) return res.status(404).json({ message: "Playlist not found" });
+
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ message: "No items to append" });
+  }
+
+  const currentItems = db.prepare("SELECT COUNT(*) as count FROM playlist_items WHERE playlist_id=?").get(pl.id).count;
+  
+  items.forEach((item, i) => {
+    db.prepare("INSERT INTO playlist_items (playlist_id,content_id,position,display_duration) VALUES (?,?,?,?)")
+      .run(pl.id, item.content_id, currentItems + i, item.display_duration || 10);
+  });
+
+  res.json(getPlaylistWithItems(pl.id));
+});
+
 // ─────────────────────────── GROUPS API ────────────────────────
 app.get("/api/groups", (req, res) => {
   const groups = db.prepare("SELECT * FROM tv_groups ORDER BY group_name").all().map(g => {
@@ -339,6 +359,39 @@ function sendToDevice(deviceId, payload, tvRow) {
   broadcastTvList();
 }
 
+function updatePlaylistOnDevice(targetType, targetId, playlist) {
+  if (targetType === "tv") {
+    const tv = db.prepare("SELECT * FROM tvs WHERE device_id=?").get(targetId);
+    if (!tv) return;
+    
+    const sockId = liveSockets.get(tv.device_id);
+    if (sockId) {
+      io.to(sockId).emit("action", {
+        type: "update_playlist",
+        playlist: playlist
+      });
+    }
+    
+    broadcastTvList();
+  } else if (targetType === "group") {
+    db.prepare(`
+      SELECT tvs.device_id FROM group_members
+      JOIN tvs ON tvs.id=group_members.tv_id
+      WHERE group_members.group_id=?
+    `).all(targetId).forEach(tv => {
+      const sockId = liveSockets.get(tv.device_id);
+      if (sockId) {
+        io.to(sockId).emit("action", {
+          type: "update_playlist",
+          playlist: playlist
+        });
+      }
+    });
+    
+    broadcastTvList();
+  }
+}
+
 // ─────────────────────────── SOCKET.IO ─────────────────────────
 io.on("connection", (socket) => {
   socket.on("register-device", (deviceId) => {
@@ -361,21 +414,35 @@ io.on("connection", (socket) => {
   });
 
   socket.on("playback-status", ({ deviceId, status }) => {
+    db.prepare(`
+      UPDATE tvs
+      SET playback_status = ?
+      WHERE device_id = ?
+    `).run(status, deviceId);
 
-  db.prepare(`
-    UPDATE tvs
-    SET playback_status = ?
-    WHERE device_id = ?
-  `).run(status, deviceId);
+    broadcastTvList();
+  });
 
-  broadcastTvList();
+  socket.on("playback-state", ({ deviceId, status, current_item_index, current_filename, current_original_name, playlist_id, playlist_name, loop_enabled, loop_until }) => {
+    const tv = db.prepare("SELECT * FROM tvs WHERE device_id=?").get(deviceId);
+    if (!tv) return;
 
-});
+    db.prepare(`
+      UPDATE tvs
+      SET playback_status = ?, current_item_index = ?, loop_enabled = ?, loop_until = ?
+      WHERE device_id = ?
+    `).run(status, current_item_index, loop_enabled ? 1 : 0, loop_until || null, deviceId);
+
+    broadcastTvList();
+  });
 
   // Admin sends control commands
-  socket.on("control", ({ targetType, targetId, action, playlist_id, loop, loopUntil }) => {
+  socket.on("control", ({ targetType, targetId, action, playlist_id, loop, loopUntil, playlist }) => {
     if (action === "play" && playlist_id) {
       pushPlaylist(targetType, targetId, playlist_id, !!loop, loopUntil || null);
+    } else if (action === "update_playlist" && playlist) {
+      // Update playlist without restarting playback
+      updatePlaylistOnDevice(targetType, targetId, playlist);
     } else {
       // resume / pause / stop — find devices and send
       const sendAction = (deviceId) => {
